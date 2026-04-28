@@ -1,28 +1,27 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
 import path from 'path';
-import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import {defineConfig, loadEnv} from 'vite';
+import {nodePolyfills} from 'vite-plugin-node-polyfills';
 
-export default defineConfig({
-  // 👇 GitHub Pages: use repo name as base path
-  base: '/Topical-Authority-Mapper/',
+export default defineConfig(({mode}) => {
+  // loadEnv is kept if you need it for other config logic
+  const env = loadEnv(mode, '.', '');
   
-  plugins: [
-    react(),
-    tailwindcss(),
-    nodePolyfills(),
-  ],
-  
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-      'node-fetch': 'node-fetch-native',
+  return {
+    plugins: [
+      react(),
+      tailwindcss(),
+    ],
+    // ✅ NO define block needed - Vite auto-exposes VITE_* vars via import.meta.env
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
+        'node-fetch': 'node-fetch-native',
+      },
     },
-  },
-  
-  build: {
-    outDir: 'dist',
-    sourcemap: false,
-  },
+    server: {
+      hmr: process.env.DISABLE_HMR !== 'true',
+    },
+  };
 });
