@@ -4,18 +4,16 @@ import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
-// https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   
   return {
-    // 👇 REQUIRED for GitHub Pages at /Topical-Authority-Mapper/
-    base: '/Topical-Authority-Mapper/',
+    base: '/Topical-Authority-Mapper/',  // ← REQUIRED for GitHub Pages
     
     plugins: [
       react(),
       tailwindcss(),
-      nodePolyfills(), // 👈 Added - you imported it but didn't use it
+      nodePolyfills(),
     ],
     
     define: {
@@ -24,12 +22,11 @@ export default defineConfig(({ mode }) => {
     
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, './src'), // 👈 Fixed: point to src folder
+        '@': path.resolve(__dirname, './src'),
         'node-fetch': 'node-fetch-native',
       },
     },
     
-    // Server config only affects dev mode (npm run dev)
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
     },
