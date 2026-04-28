@@ -8,8 +8,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   
   return {
-    // 👇 Try WITHOUT trailing slash or use relative path
-    base: mode === 'development' ? '/' : '/Topical-Authority-Mapper/',
+    // 👇 Use relative path or empty string
+    base: './',
     
     plugins: [
       react(),
@@ -26,11 +26,7 @@ export default defineConfig(({ mode }) => {
     
     build: {
       outDir: 'dist',
-      sourcemap: true,
-    },
-    
-    server: {
-      hmr: process.env.DISABLE_HMR !== 'true',
+      sourcemap: false,
     },
   };
 });
