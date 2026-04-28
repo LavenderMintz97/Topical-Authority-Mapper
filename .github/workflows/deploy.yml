@@ -1,10 +1,9 @@
-# .github/workflows/deploy.yml
 name: Deploy to GitHub Pages
 
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: # Allows manual trigger
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -30,6 +29,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # 👇 ADD THIS: Create .env file with API key from GitHub Secrets
+      - name: Create .env file
+        run: |
+          echo "VITE_GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
+          echo "VITE_APP_URL=https://lavendermintz97.github.io/Topical-Authority-Mapper/" >> .env
 
       - name: Build with Vite
         run: npm run build
