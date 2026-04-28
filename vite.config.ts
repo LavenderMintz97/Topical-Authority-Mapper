@@ -5,15 +5,20 @@ import {defineConfig, loadEnv} from 'vite';
 import {nodePolyfills} from 'vite-plugin-node-polyfills';
 
 export default defineConfig(({mode}) => {
-  // loadEnv is kept if you need it for other config logic
   const env = loadEnv(mode, '.', '');
   
   return {
+    // ✅ ADD THIS LINE - tells Vite where the site will be hosted
+    base: '/Topical-Authority-Mapper/',
+    
     plugins: [
       react(),
       tailwindcss(),
     ],
-    // ✅ NO define block needed - Vite auto-exposes VITE_* vars via import.meta.env
+    // Remove this define block if it exists (causes conflicts)
+    // define: {
+    //   'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+    // },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
