@@ -7,16 +7,17 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 export default defineConfig(({ mode }) => {
   return {
-    // 🔑 Critical: Base path for GitHub Pages subdirectory hosting
+    // 🔑 CRITICAL: Base path for GitHub Pages subdirectory
     base: '/Topical-Authority-Mapper/',
 
-    // 🧩 Plugins
     plugins: [
       react(),
       tailwindcss(),
     ],
 
-    // 🔗 Path aliases
+    // ✅ REMOVE the define block - Vite auto-exposes VITE_* vars via import.meta.env
+    // The old define block caused conflicts with env var injection
+
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
@@ -24,22 +25,8 @@ export default defineConfig(({ mode }) => {
       },
     },
 
-    // 🌐 Server config (development only)
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
-    },
-
-    // 📦 Build optimization (optional but recommended)
-    build: {
-      outDir: 'dist',
-      sourcemap: false, // Set to true for debugging
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            vendor: ['react', 'react-dom'],
-          },
-        },
-      },
     },
   };
 });
