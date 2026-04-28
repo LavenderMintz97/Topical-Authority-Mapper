@@ -1,9 +1,8 @@
-# .github/workflows/deploy.yml
 name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -22,7 +21,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -31,15 +30,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # 👇 THIS IS THE MISSING STEP - ADD THIS!
-      - name: Create .env file with API key
-        run: |
-          echo "VITE_GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
-          echo "VITE_APP_URL=https://lavendermintz97.github.io/Topical-Authority-Mapper/" >> .env
-          cat .env  # Debug: verify the contents
-
       - name: Build with Vite
         run: npm run build
+        env:
+          VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
