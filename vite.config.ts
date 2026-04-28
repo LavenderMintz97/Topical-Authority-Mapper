@@ -17,11 +17,7 @@ export default defineConfig(({ mode }) => {
       nodePolyfills(), // 👈 Added - was imported but not used
     ],
     
-    // 👇 REMOVE this block - not needed since geminiService.ts uses import.meta.env
-    // define: {
-    //   'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-    // },
-    
+        
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'), // 👈 Fixed: was '.' should be './src'
