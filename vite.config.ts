@@ -8,21 +8,25 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   
   return {
-    // 👇 REQUIRED for GitHub Pages
-    base: '/Topical-Authority-Mapper/',
+    // 👇 Try WITHOUT trailing slash or use relative path
+    base: mode === 'development' ? '/' : '/Topical-Authority-Mapper/',
     
     plugins: [
       react(),
       tailwindcss(),
-      nodePolyfills(), // 👈 Added - was imported but not used
+      nodePolyfills(),
     ],
     
-        
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, './src'), // 👈 Fixed: was '.' should be './src'
+        '@': path.resolve(__dirname, './src'),
         'node-fetch': 'node-fetch-native',
       },
+    },
+    
+    build: {
+      outDir: 'dist',
+      sourcemap: true,
     },
     
     server: {
