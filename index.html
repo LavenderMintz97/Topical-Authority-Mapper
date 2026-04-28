@@ -4,50 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Google AI Studio App</title>
-    <script>
-      // Defensive shim against libraries trying to overwrite read-only fetch
-      (function() {
-        if (typeof window !== 'undefined') {
-          const originalFetch = window.fetch;
-          
-          // 1. Try to redefine fetch on window with a no-op setter to prevent assignment crashes
-          try {
-            Object.defineProperty(window, 'fetch', {
-              get: function() { return originalFetch; },
-              set: function() { /* Ignore attempts to overwrite */ },
-              configurable: true,
-              enumerable: true
-            });
-          } catch (e) {
-            // If it fails, window.fetch is likely non-configurable
-          }
-
-          // 2. Create a stable 'global' object that shadows window but allows fetch assignment
-          // Many libraries do 'global.fetch = ...'
-          const globalShadow = Object.create(window);
-          try {
-            Object.defineProperty(globalShadow, 'fetch', {
-              value: originalFetch,
-              writable: true,
-              configurable: true,
-              enumerable: true
-            });
-          } catch (e) {}
-
-          // Define window.global and globalThis.global
-          try {
-            window.global = globalShadow;
-            if (typeof globalThis !== 'undefined') {
-              globalThis.global = globalShadow;
-            }
-          } catch (e) {}
-        }
-      })();
-    </script>
+    <!-- Keep your fetch shim script here -->
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/Topical-Authority-Mapper/assets/index-xxx.js"></script>
+    <!-- 👇 THIS IS THE IMPORTANT LINE - Should point to SOURCE file -->
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
