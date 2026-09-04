@@ -2,8 +2,54 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <base href="/Topical-Authority-Mapper/" />  <!-- ✅ Should be here -->
-    <!-- rest of head -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Topical Authority Mapper</title>
+    <meta name="description" content="Comprehensive Semantic SEO architecture tool for building entity-based Topical Maps using Gemini AI." />
+    <meta property="og:title" content="Topical Authority Mapper" />
+    <meta property="og:description" content="Comprehensive Semantic SEO architecture tool for building entity-based Topical Maps using Gemini AI." />
+    <script>
+      // Defensive shim against environments where window.fetch has only a getter
+      (function() {
+        if (typeof window !== 'undefined') {
+          try {
+            var originalFetch = window.fetch ? window.fetch.bind(window) : null;
+            var currentFetch = originalFetch;
+
+            Object.defineProperty(window, 'fetch', {
+              get: function() {
+                return currentFetch || (originalFetch ? originalFetch : window.fetch);
+              },
+              set: function(val) {
+                currentFetch = val;
+              },
+              configurable: true,
+              enumerable: true
+            });
+          } catch (e) {
+            try {
+              var originalFetchProto = Window.prototype.fetch;
+              var currentFetchProto = originalFetchProto;
+              Object.defineProperty(Window.prototype, 'fetch', {
+                get: function() {
+                  return currentFetchProto;
+                },
+                set: function(val) {
+                  currentFetchProto = val;
+                },
+                configurable: true,
+                enumerable: true
+              });
+            } catch (e2) {}
+          }
+
+          try {
+            if (!window.global) {
+              window.global = window;
+            }
+          } catch (e3) {}
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

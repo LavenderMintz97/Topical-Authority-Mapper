@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -21,12 +21,25 @@ import {
   List,
   Eye,
   FileText,
-  FileCode
+  FileCode,
+  Swords,
+  AlertTriangle,
+  CheckCircle2,
+  Filter,
+  Tag,
+  ExternalLink,
+  ShieldAlert,
+  Sparkles,
+  Trophy
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { generateTopicalMap } from './services/geminiService';
-import { TopicalMap, SEOEntity, NodeType } from './types';
+import { TopicalMap, SEOEntity, NodeType, FilterOptions, NodeGapItem } from './types';
 import TopicalGraph from './components/TopicalGraph';
+import GapAnalysisModule from './components/GapAnalysisModule';
+import CategoryFilterBar from './components/CategoryFilterBar';
+import AuthorityFlowView from './components/AuthorityFlowView';
+import { analyzeTopicalMapGaps, generateSampleUrls, filterGapItems } from './utils/gapAnalyzer';
 
 export default function App() {
   const [seed, setSeed] = useState('');
@@ -35,7 +48,20 @@ export default function App() {
   const [loadingStatus, setLoadingStatus] = useState('');
   const [mapData, setMapData] = useState<TopicalMap | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'graph' | 'json' | 'help'>('help');
+  const [viewMode, setViewMode] = useState<'list' | 'graph' | 'gaps' | 'json' | 'help'>('help');
+
+  // URL inputs for Content Gap & Competitor Analysis
+  const [userUrlsText, setUserUrlsText] = useState<string>('');
+  const [competitorUrlsText, setCompetitorUrlsText] = useState<string>('');
+
+  // Category and Node Filters
+  const [filters, setFilters] = useState<FilterOptions>({
+    searchQuery: '',
+    nodeType: 'all',
+    intent: 'all',
+    category: 'all',
+    gapStatus: 'all'
+  });
 
   const loadingMessages = [
     "Initializing Semantic Neural Engine...",
@@ -48,25 +74,86 @@ export default function App() {
     "Synthesizing Strategic Authority Map..."
   ];
 
+  // Run Gap Analysis across current mapData and URLs
+  const gapAnalysis = useMemo(() => {
+    if (!mapData) {
+      return {
+        items: [] as NodeGapItem[],
+        summary: {
+          totalNodes: 0,
+          userCoveredCount: 0,
+          userGapCount: 0,
+          coveragePercentage: 0,
+          competitorCoveredCount: 0,
+          competitorGapCount: 0,
+          competitorAdvantageCount: 0,
+          blueOceanCount: 0,
+          battlegroundCount: 0,
+          userAdvantageCount: 0,
+          highPriorityGapsCount: 0
+        },
+        categories: [] as string[]
+      };
+    }
+
+    const userUrls = userUrlsText.split('\n').map(u => u.trim()).filter(Boolean);
+    const competitorUrls = competitorUrlsText.split('\n').map(u => u.trim()).filter(Boolean);
+    return analyzeTopicalMapGaps(mapData, userUrls, competitorUrls);
+  }, [mapData, userUrlsText, competitorUrlsText]);
+
+  // Quick helper to load sample URLs
+  const handleLoadSampleUrls = () => {
+    const samples = generateSampleUrls(seed || 'semantic-seo');
+    setUserUrlsText(samples.userUrls.join('\n'));
+    setCompetitorUrlsText(samples.competitorUrls.join('\n'));
+  };
+
+  // Toggle user covered status for a node
+  const handleToggleCovered = (nodeId: string) => {
+    const item = gapAnalysis.items.find(i => i.nodeId === nodeId);
+    if (!item) return;
+
+    if (item.userCovered) {
+      if (item.userMatchedUrl) {
+        setUserUrlsText(prev => prev.split('\n').filter(u => u.trim() !== item.userMatchedUrl).join('\n'));
+      }
+    } else {
+      const newUrl = `https://example.com${item.targetSlug}`;
+      setUserUrlsText(prev => (prev.trim() ? `${prev.trim()}\n${newUrl}` : newUrl));
+    }
+  };
+
   const exportReport = () => {
     if (!mapData) return;
     const report = `# Topical Authority Map: ${seed}
 Generated on ${new Date().toLocaleDateString()}
 
-## Strategic Overview
-${mapData.nodes.map(n => `### ${n.label} (${n.type})
-${n.description}
-- Intent: ${n.intent}
-- Internal Linking: ${n.linkingLogic}
-- Entities: ${n.entities.join(', ')}
+## Strategic Coverage Overview
+- Total Entities: ${gapAnalysis.summary.totalNodes}
+- Your Covered Content: ${gapAnalysis.summary.userCoveredCount} (${gapAnalysis.summary.coveragePercentage}%)
+- Identified Content Gaps: ${gapAnalysis.summary.userGapCount}
+- Competitor Threats: ${gapAnalysis.summary.competitorAdvantageCount}
 
-`).join('\n')}
+## Architectural Breakdown
+${mapData.nodes.map(n => {
+  const gapItem = gapAnalysis.items.find(i => i.nodeId === n.id);
+  return `### ${n.label} (${n.type.toUpperCase()})
+- Category: ${gapItem?.category || 'General'}
+- Intent: ${n.intent}
+- Gap Status: ${gapItem?.userCovered ? `Covered (${gapItem.userMatchedUrl})` : `Content Gap [Priority: ${gapItem?.priority || 'Medium'}]`}
+- Action: ${gapItem?.recommendedAction || n.description}
+- Target Slug: ${gapItem?.targetSlug || '/'}
+- Internal Linking Logic: ${n.linkingLogic}
+- Semantic Entities: ${n.entities.join(', ')}
+
+`;
+}).join('\n')}
 `;
     const blob = new Blob([report], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `report-${seed.toLowerCase().replace(/\s+/g, '-')}.md`;
+    a.download = `topical-authority-${seed.toLowerCase().replace(/\s+/g, '-')}.md`;
     a.click();
   };
 
@@ -83,37 +170,40 @@ ${n.description}
     
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(`Generated on ${new Date().toLocaleDateString()}`, 20, y);
-    y += 20;
+    doc.text(`Generated on ${new Date().toLocaleDateString()} • Coverage: ${gapAnalysis.summary.coveragePercentage}% (${gapAnalysis.summary.userCoveredCount}/${gapAnalysis.summary.totalNodes})`, 20, y);
+    y += 15;
 
     mapData.nodes.forEach((node) => {
-      if (y > 270) {
+      if (y > 260) {
         doc.addPage();
         y = 20;
       }
 
-      doc.setFontSize(14);
-      doc.setTextColor(0);
-      doc.text(`${node.label} [${node.type.toUpperCase()}]`, 20, y);
-      y += 7;
+      const gapItem = gapAnalysis.items.find(i => i.nodeId === node.id);
 
-      doc.setFontSize(10);
-      doc.setTextColor(50);
-      const descriptionLines = doc.splitTextToSize(node.description, pageWidth - 40);
-      doc.text(descriptionLines, 20, y);
-      y += descriptionLines.length * 5 + 5;
+      doc.setFontSize(13);
+      doc.setTextColor(0);
+      doc.text(`${node.label} [${node.type.toUpperCase()}] - ${gapItem?.userCovered ? 'Covered' : 'Gap'}`, 20, y);
+      y += 6;
 
       doc.setFontSize(9);
       doc.setTextColor(80);
-      doc.text(`Intent: ${node.intent}`, 20, y);
+      const desc = `Category: ${gapItem?.category || 'Core'} | Intent: ${node.intent} | Target: ${gapItem?.targetSlug || '/'}`;
+      doc.text(desc, 20, y);
       y += 5;
-      
-      const logicLines = doc.splitTextToSize(`Logic: ${node.linkingLogic}`, pageWidth - 40);
+
+      doc.setTextColor(50);
+      const descriptionLines = doc.splitTextToSize(node.description, pageWidth - 40);
+      doc.text(descriptionLines, 20, y);
+      y += descriptionLines.length * 4.5 + 4;
+
+      doc.setTextColor(30, 80, 150);
+      const logicLines = doc.splitTextToSize(`Internal Linking: ${node.linkingLogic}`, pageWidth - 40);
       doc.text(logicLines, 20, y);
-      y += logicLines.length * 5 + 10;
+      y += logicLines.length * 4.5 + 8;
     });
 
-    doc.save(`report-${seed.toLowerCase().replace(/\s+/g, '-')}.pdf`);
+    doc.save(`topical-report-${seed.toLowerCase().replace(/\s+/g, '-')}.pdf`);
   };
 
   const exportGraphAsImage = () => {
@@ -137,7 +227,6 @@ ${n.description}
     setLoadingProgress(0);
     setLoadingStatus(loadingMessages[0]);
 
-    // Fast-moving simulation that reacts to the actual API call
     let currentProgress = 0;
     const progressInterval = setInterval(() => {
       currentProgress += Math.random() * 8;
@@ -145,7 +234,6 @@ ${n.description}
       
       setLoadingProgress(currentProgress);
       
-      // Select message based on current progress percentage
       const msgIndex = Math.min(
         Math.floor((currentProgress / 100) * loadingMessages.length), 
         loadingMessages.length - 1
@@ -157,14 +245,21 @@ ${n.description}
       const data = await generateTopicalMap(seed);
       clearInterval(progressInterval);
       setLoadingProgress(100);
-      setLoadingStatus("Analysis Complete. Rendering Map...");
+      setLoadingStatus("Analysis Complete. Initializing Gap & Authority Engine...");
       
       setTimeout(() => {
         setMapData(data);
         setLoading(false);
         setViewMode('list');
         setSelectedNodeId(null);
-      }, 800);
+
+        // Pre-populate sample URLs if user hasn't supplied any yet
+        if (!userUrlsText.trim()) {
+          const sample = generateSampleUrls(seed);
+          setUserUrlsText(sample.userUrls.join('\n'));
+          setCompetitorUrlsText(sample.competitorUrls.join('\n'));
+        }
+      }, 700);
     } catch (error) {
       clearInterval(progressInterval);
       setLoading(false);
@@ -177,87 +272,114 @@ ${n.description}
     return mapData?.nodes.find(n => n.id === selectedNodeId) || null;
   }, [mapData, selectedNodeId]);
 
-  const sortedNodes = useMemo(() => {
-    if (!mapData) return [];
-    const order: NodeType[] = ['pillar', 'cluster', 'supporting'];
-    return [...mapData.nodes].sort((a, b) => {
-      if (a.type !== b.type) {
-        return order.indexOf(a.type) - order.indexOf(b.type);
-      }
-      return a.label.localeCompare(b.label);
-    });
-  }, [mapData]);
+  const selectedNodeGap = useMemo(() => {
+    if (!selectedNodeId) return null;
+    return gapAnalysis.items.find(i => i.nodeId === selectedNodeId) || null;
+  }, [gapAnalysis, selectedNodeId]);
+
+  // Filtered nodes for the list view
+  const filteredListItems = useMemo(() => {
+    return filterGapItems(gapAnalysis.items, filters);
+  }, [gapAnalysis.items, filters]);
 
   return (
-    <div className="min-h-screen flex flex-col font-sans selection:bg-[#141414] selection:text-[#E4E3E0]">
+    <div className="min-h-screen flex flex-col font-sans selection:bg-[#141414] selection:text-[#E4E3E0] bg-[#FBFBFA]">
       {/* Header */}
-      <header className="border-b border-[#141414] p-6 bg-[#E4E3E0] sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <header className="border-b border-[#141414] p-5 bg-[#E4E3E0] sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Workflow className="w-8 h-8" />
+            <Workflow className="w-8 h-8 text-[#141414]" />
             <div>
               <h1 className="text-xl font-bold uppercase tracking-tighter">Topical Authority Mapper</h1>
-              <p className="text-[10px] uppercase font-mono opacity-50">Semantic SEO Architecture v1.0 / Entity-Based SEO</p>
+              <p className="text-[10px] uppercase font-mono opacity-60">Semantic SEO Architecture • Content Gap & Competitor Engine</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-             <div className="flex border border-[#141414]">
-               <button 
-                onClick={() => setViewMode('list')}
-                className={`flex items-center gap-2 text-[11px] font-mono uppercase px-3 py-1.5 transition-colors ${viewMode === 'list' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'}`}
-               >
-                <List className="w-3 h-3" /> List
-               </button>
-               <button 
-                onClick={() => setViewMode('graph')}
-                className={`flex items-center gap-2 text-[11px] font-mono uppercase px-3 py-1.5 transition-colors border-l border-[#141414] ${viewMode === 'graph' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'}`}
-               >
-                <Network className="w-3 h-3" /> Visual
-               </button>
-               <button 
-                onClick={() => setViewMode('json')}
-                className={`flex items-center gap-2 text-[11px] font-mono uppercase px-3 py-1.5 transition-colors border-l border-[#141414] ${viewMode === 'json' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'}`}
-               >
-                <Eye className="w-3 h-3" /> JSON
-               </button>
-               <button 
-                onClick={() => setViewMode('help')}
-                className={`flex items-center gap-2 text-[11px] font-mono uppercase px-3 py-1.5 transition-colors border-l border-[#141414] ${viewMode === 'help' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'}`}
-               >
-                <Info className="w-3 h-3" /> Help
-               </button>
-             </div>
-             {mapData && (
-               <div className="flex gap-2">
-                 <div className="flex border border-[#141414] overflow-hidden">
-                    <button 
-                      onClick={exportReport}
-                      title="Download Markdown Report"
-                      className="flex items-center gap-2 text-[10px] font-mono uppercase bg-white px-3 py-1.5 hover:bg-[#141414] hover:text-[#E4E3E0] transition-all border-r border-[#141414]"
-                    >
-                      <FileCode className="w-3 h-3" />
-                      MD
-                    </button>
-                    <button 
-                      onClick={exportPDF}
-                      title="Download PDF Report"
-                      className="flex items-center gap-2 text-[10px] font-mono uppercase bg-white px-3 py-1.5 hover:bg-[#141414] hover:text-[#E4E3E0] transition-all"
-                    >
-                      <FileText className="w-3 h-3" />
-                      PDF
-                    </button>
-                 </div>
 
-                 {viewMode === 'graph' && (
+          <div className="flex items-center gap-3">
+            {/* View switcher */}
+            <div className="flex border border-[#141414] bg-white">
+              <button 
+                onClick={() => setViewMode('list')}
+                className={`flex items-center gap-1.5 text-[11px] font-mono uppercase px-3 py-1.5 transition-colors ${
+                  viewMode === 'list' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'
+                }`}
+              >
+                <List className="w-3.5 h-3.5" /> List
+              </button>
+
+              <button 
+                onClick={() => setViewMode('graph')}
+                className={`flex items-center gap-1.5 text-[11px] font-mono uppercase px-3 py-1.5 transition-colors border-l border-[#141414] ${
+                  viewMode === 'graph' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'
+                }`}
+              >
+                <Network className="w-3.5 h-3.5" /> Visual
+              </button>
+
+              <button 
+                onClick={() => setViewMode('gaps')}
+                className={`flex items-center gap-1.5 text-[11px] font-mono uppercase px-3 py-1.5 transition-colors border-l border-[#141414] ${
+                  viewMode === 'gaps' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'
+                }`}
+              >
+                <Swords className="w-3.5 h-3.5" />
+                <span>Gaps & Competitors</span>
+                {mapData && gapAnalysis.summary.userGapCount > 0 && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-amber-500 text-white">
+                    {gapAnalysis.summary.userGapCount}
+                  </span>
+                )}
+              </button>
+
+              <button 
+                onClick={() => setViewMode('json')}
+                className={`flex items-center gap-1.5 text-[11px] font-mono uppercase px-3 py-1.5 transition-colors border-l border-[#141414] ${
+                  viewMode === 'json' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'
+                }`}
+              >
+                <Eye className="w-3.5 h-3.5" /> JSON
+              </button>
+
+              <button 
+                onClick={() => setViewMode('help')}
+                className={`flex items-center gap-1.5 text-[11px] font-mono uppercase px-3 py-1.5 transition-colors border-l border-[#141414] ${
+                  viewMode === 'help' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'
+                }`}
+              >
+                <Info className="w-3.5 h-3.5" /> Help
+              </button>
+            </div>
+
+            {/* Export buttons */}
+            {mapData && (
+              <div className="flex gap-2">
+                <div className="flex border border-[#141414] overflow-hidden">
+                  <button 
+                    onClick={exportReport}
+                    title="Download Markdown Report"
+                    className="flex items-center gap-1 text-[10px] font-mono uppercase bg-white px-2.5 py-1.5 hover:bg-[#141414] hover:text-[#E4E3E0] transition-all border-r border-[#141414]"
+                  >
+                    <FileCode className="w-3 h-3" /> MD
+                  </button>
+                  <button 
+                    onClick={exportPDF}
+                    title="Download PDF Report"
+                    className="flex items-center gap-1 text-[10px] font-mono uppercase bg-white px-2.5 py-1.5 hover:bg-[#141414] hover:text-[#E4E3E0] transition-all"
+                  >
+                    <FileText className="w-3 h-3" /> PDF
+                  </button>
+                </div>
+
+                {viewMode === 'graph' && (
                   <button 
                     onClick={exportGraphAsImage}
-                    className="flex items-center gap-2 text-[10px] font-mono uppercase border border-[#141414] px-3 py-1.5 hover:bg-[#141414] hover:text-[#E4E3E0] transition-all"
+                    className="flex items-center gap-1.5 text-[10px] font-mono uppercase border border-[#141414] bg-white px-2.5 py-1.5 hover:bg-[#141414] hover:text-[#E4E3E0] transition-all"
                   >
-                    <Download className="w-3 h-3" />
-                    SVG
+                    <Download className="w-3 h-3" /> SVG
                   </button>
-                 )}
-                 <button 
+                )}
+
+                <button 
                   onClick={() => {
                     const blob = new Blob([JSON.stringify(mapData, null, 2)], { type: 'application/json' });
                     const url = URL.createObjectURL(blob);
@@ -266,13 +388,12 @@ ${n.description}
                     a.download = `topical-map-${seed.toLowerCase().replace(/\s+/g, '-')}.json`;
                     a.click();
                   }}
-                  className="flex items-center gap-2 text-[10px] font-mono uppercase bg-[#141414] text-[#E4E3E0] px-3 py-1.5 hover:opacity-90 transition-opacity"
-                 >
-                  <Download className="w-3 h-3" />
-                  Data
-                 </button>
-               </div>
-             )}
+                  className="flex items-center gap-1 text-[10px] font-mono uppercase bg-[#141414] text-[#E4E3E0] px-3 py-1.5 hover:opacity-90 transition-opacity"
+                >
+                  <Download className="w-3 h-3" /> Data
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -284,14 +405,14 @@ ${n.description}
           <div className="text-[10rem] font-mono absolute -bottom-20 -right-20">01010101</div>
         </div>
         
-        <div className="max-w-7xl mx-auto px-6 py-16 relative z-10">
+        <div className="max-w-7xl mx-auto px-6 py-12 relative z-10">
           <div className="max-w-3xl">
             <motion.h2 
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              className="text-6xl font-serif italic mb-8 leading-tight"
+              className="text-5xl font-serif italic mb-6 leading-tight"
             >
-              Architect your <br/> Semantic Authority.
+              Architect your Semantic Authority & Close Content Gaps.
             </motion.h2>
             <div className="flex gap-2">
               <div className="relative flex-1">
@@ -301,16 +422,16 @@ ${n.description}
                   value={seed}
                   onChange={(e) => setSeed(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-                  placeholder="Define your Seed Entity (e.g. 'Vertical Farming')"
-                  className="w-full bg-white border border-[#141414] py-5 pl-12 pr-4 text-xl focus:outline-none focus:ring-2 focus:ring-[#141414]/10 transition-all font-serif"
+                  placeholder="Define your Seed Entity (e.g. 'Vertical Farming', 'Cloud Architecture')"
+                  className="w-full bg-white border border-[#141414] py-4 pl-12 pr-4 text-lg focus:outline-none focus:ring-2 focus:ring-[#141414]/10 transition-all font-serif"
                 />
               </div>
               <button 
                 onClick={handleGenerate}
                 disabled={loading || !seed}
-                className="bg-[#141414] text-[#E4E3E0] px-10 font-bold uppercase tracking-widest disabled:opacity-50 flex items-center gap-3 active:scale-95 transition-transform"
+                className="bg-[#141414] text-[#E4E3E0] px-8 font-bold uppercase tracking-widest disabled:opacity-50 flex items-center gap-3 active:scale-95 transition-transform text-xs"
               >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Network className="w-5 h-5" /> Analyze</>}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Network className="w-4 h-4" /> Analyze</>}
               </button>
             </div>
           </div>
@@ -350,29 +471,6 @@ ${n.description}
                   className="absolute top-0 left-0 h-full bg-[#141414]"
                 />
               </div>
-
-              <div className="mt-12 grid grid-cols-2 gap-8 opacity-20 select-none">
-                <div className="space-y-2">
-                  <div className="h-2 bg-[#141414] w-3/4"></div>
-                  <div className="h-2 bg-[#141414] w-1/2"></div>
-                  <div className="h-2 bg-[#141414] w-2/3"></div>
-                </div>
-                <div className="space-y-4">
-                  <div className="w-8 h-8 rounded-full border border-[#141414]"></div>
-                  <div className="w-8 h-8 rounded-full border border-[#141414]"></div>
-                </div>
-              </div>
-
-              <motion.div 
-                animate={{ 
-                  scale: [1, 1.1, 1],
-                  opacity: [0.1, 0.2, 0.1]
-                }}
-                transition={{ duration: 3, repeat: Infinity }}
-                className="absolute -top-24 -right-24"
-              >
-                <Network className="w-48 h-48" />
-              </motion.div>
             </div>
           </div>
         )}
@@ -388,85 +486,149 @@ ${n.description}
               <div className="max-w-md">
                 <Network className="w-16 h-16 mx-auto mb-6 opacity-10" />
                 <p className="text-sm opacity-50 uppercase tracking-widest font-mono">
-                  Enter a seed topic to generate a semantic architecture blueprint.
+                  Enter a seed topic above to generate the topical map and perform gap & competitor analysis.
                 </p>
               </div>
             </motion.div>
           ) : (
             <div className="flex-1 flex overflow-hidden">
-              {/* Architecture List / Data Grid */}
-              <div className={`flex-1 border-r border-[#141414] overflow-y-auto ${viewMode !== 'list' ? 'hidden' : ''}`}>
-                <div className="p-6 sticky top-0 bg-[#E4E3E0] border-b border-[#141414] z-10 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase bg-[#141414] text-[#E4E3E0] px-2 py-0.5 rounded">
-                      <Layers className="w-3 h-3" />
-                      {mapData.nodes.length} Nodes
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase border border-[#141414] px-2 py-0.5 rounded">
-                      <LinkIcon className="w-3 h-3" />
-                      {mapData.links.length} Links
-                    </div>
-                  </div>
-                  <p className="font-serif italic text-xs">Scroll to navigate the architecture hierarchy</p>
-                </div>
+              {/* VIEW 1: Architecture List View with Category and Gap Filters */}
+              {viewMode === 'list' && (
+                <div className="flex-1 border-r border-[#141414] flex flex-col overflow-hidden bg-white">
+                  {/* Category Filter Bar */}
+                  <CategoryFilterBar
+                    filters={filters}
+                    onChange={setFilters}
+                    categories={gapAnalysis.categories}
+                    totalCount={mapData.nodes.length}
+                    filteredCount={filteredListItems.length}
+                    showGapFilter={true}
+                  />
 
-                <div className="min-w-full">
-                  {/* Column Headers */}
-                  <div className="grid grid-cols-[80px_2fr_1fr_1fr_40px] px-6 py-3 border-b border-[#141414] bg-[#F0EFED] sticky top-[73px] z-10">
-                    <span className="col-header">Type</span>
-                    <span className="col-header">Node/Topic</span>
-                    <span className="col-header">Intent</span>
-                    <span className="col-header">Connections</span>
+                  {/* List Header */}
+                  <div className="grid grid-cols-[110px_2fr_130px_110px_90px_40px] px-6 py-3 border-b border-[#141414] bg-[#F0EFED] text-[10px] font-mono uppercase tracking-wider sticky top-0 z-10">
+                    <span>Type</span>
+                    <span>Node / Topic</span>
+                    <span>Category</span>
+                    <span>Status</span>
+                    <span>Intent</span>
                     <span></span>
                   </div>
 
-                  {/* Rows */}
-                  {sortedNodes.map((node) => (
-                    <div 
-                      key={node.id}
-                      onClick={() => setSelectedNodeId(node.id)}
-                      id={`node-${node.id}`}
-                      className={`grid grid-cols-[80px_2fr_1fr_1fr_40px] px-6 py-4 data-row ${selectedNodeId === node.id ? 'bg-[#141414] text-[#E4E3E0]' : ''}`}
-                    >
-                      <span className="text-[10px] font-mono uppercase opacity-70 flex items-center">
-                        <Circle className={`w-2 h-2 mr-2 fill-current ${node.type === 'pillar' ? 'text-blue-500' : node.type === 'cluster' ? 'text-amber-500' : 'text-emerald-500'}`} />
-                        {node.type}
-                      </span>
-                      <span className="font-bold flex items-center gap-2">
-                        {node.label}
-                        {node.type === 'pillar' && <Database className="w-3 h-3 opacity-30" />}
-                      </span>
-                      <span className="text-xs opacity-70 flex items-center italic">{node.intent}</span>
-                      <span className="text-[10px] font-mono flex items-center opacity-70">{node.entities.length} entities</span>
-                      <span className="flex items-center justify-end">
-                        <ChevronRight className={`w-4 h-4 transition-transform ${selectedNodeId === node.id ? 'translate-x-1' : ''}`} />
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                  {/* List Rows */}
+                  <div className="flex-1 overflow-y-auto">
+                    {filteredListItems.length === 0 ? (
+                      <div className="p-12 text-center text-sm font-mono opacity-50">
+                        No topic nodes match the current filter selection.
+                      </div>
+                    ) : (
+                      filteredListItems.map((item) => (
+                        <div 
+                          key={item.nodeId}
+                          onClick={() => setSelectedNodeId(item.nodeId)}
+                          id={`node-${item.nodeId}`}
+                          className={`grid grid-cols-[110px_2fr_130px_110px_90px_40px] px-6 py-4 border-b border-[#141414]/10 cursor-pointer items-center transition-colors ${
+                            selectedNodeId === item.nodeId
+                              ? 'bg-[#141414] text-[#E4E3E0]'
+                              : 'hover:bg-[#141414]/5 bg-white'
+                          }`}
+                        >
+                          <span className="text-[10px] font-mono uppercase opacity-80 flex items-center">
+                            <Circle className={`w-2 h-2 mr-2 fill-current ${
+                              item.nodeType === 'pillar' ? 'text-blue-500' : item.nodeType === 'cluster' ? 'text-amber-500' : 'text-emerald-500'
+                            }`} />
+                            {item.nodeType}
+                          </span>
 
-              {/* Visual Graph View */}
-              {viewMode === 'graph' && (
-                <div className="flex-1 border-r border-[#141414] relative overflow-hidden bg-white">
-                   <TopicalGraph 
-                    data={mapData} 
-                    onSelectNode={setSelectedNodeId} 
-                    selectedNodeId={selectedNodeId} 
-                   />
+                          <span className="font-bold text-xs flex items-center gap-2 pr-2">
+                            <span className="truncate">{item.nodeLabel}</span>
+                            {item.nodeType === 'pillar' && <Database className="w-3 h-3 opacity-30 shrink-0" />}
+                          </span>
+
+                          <span className="text-[11px] font-mono opacity-70 truncate">
+                            {item.category}
+                          </span>
+
+                          <div>
+                            {item.userCovered ? (
+                              <span className="text-[9px] font-mono uppercase text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 border border-emerald-200">
+                                ✓ Covered
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-mono uppercase text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 border border-amber-200">
+                                ⚠ Gap ({item.priority})
+                              </span>
+                            )}
+                          </div>
+
+                          <span className="text-xs opacity-70 italic">{item.intent}</span>
+
+                          <span className="flex items-center justify-end">
+                            <ChevronRight className={`w-4 h-4 transition-transform ${selectedNodeId === item.nodeId ? 'translate-x-1' : ''}`} />
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
 
-              {/* JSON Mode */}
+              {/* VIEW 2: Visual Graph with Live Gap & Category Filters */}
+              {viewMode === 'graph' && (
+                <div className="flex-1 border-r border-[#141414] flex flex-col overflow-hidden bg-white">
+                  {/* Category Filter on Graph */}
+                  <CategoryFilterBar
+                    filters={filters}
+                    onChange={setFilters}
+                    categories={gapAnalysis.categories}
+                    totalCount={mapData.nodes.length}
+                    filteredCount={filteredListItems.length}
+                    showGapFilter={true}
+                  />
+
+                  <div className="flex-1 relative overflow-hidden">
+                    <TopicalGraph 
+                      data={mapData} 
+                      onSelectNode={setSelectedNodeId} 
+                      selectedNodeId={selectedNodeId}
+                      filters={filters}
+                      gapItems={gapAnalysis.items}
+                      showGapOverlayDefault={true}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* VIEW 3: Content Gap & Competitor Audit Module */}
+              {viewMode === 'gaps' && (
+                <div className="flex-1 border-r border-[#141414] flex flex-col overflow-hidden">
+                  <GapAnalysisModule
+                    mapData={mapData}
+                    gapItems={gapAnalysis.items}
+                    summary={gapAnalysis.summary}
+                    categories={gapAnalysis.categories}
+                    userUrlsText={userUrlsText}
+                    competitorUrlsText={competitorUrlsText}
+                    onUpdateUserUrls={setUserUrlsText}
+                    onUpdateCompetitorUrls={setCompetitorUrlsText}
+                    onLoadSampleUrls={handleLoadSampleUrls}
+                    onSelectNode={setSelectedNodeId}
+                    selectedNodeId={selectedNodeId}
+                    onToggleCovered={handleToggleCovered}
+                  />
+                </div>
+              )}
+
+              {/* VIEW 4: JSON Mode */}
               {viewMode === 'json' && (
                 <div className="flex-1 bg-[#1a1a1a] text-[#a9b7c6] p-8 font-mono text-xs overflow-auto selection:bg-[#2b2b2b]">
                   <pre className="whitespace-pre-wrap">
-                    {JSON.stringify(mapData, null, 2)}
+                    {JSON.stringify({ topicalMap: mapData, gapAnalysis }, null, 2)}
                   </pre>
                 </div>
               )}
 
-              {/* Help & Guidelines */}
+              {/* VIEW 5: Help & Semantic Architecture Philosophy */}
               {viewMode === 'help' && (
                 <motion.div 
                   initial={{ opacity: 0 }}
@@ -475,102 +637,161 @@ ${n.description}
                 >
                   <div className="max-w-4xl mx-auto space-y-16">
                     <section>
-                      <h2 className="text-7xl font-serif italic mb-6 tracking-tighter">Guidelines for Semantic Dominance.</h2>
-                      <p className="text-2xl leading-relaxed text-[#141414]/70 font-light">
-                        SEO is no longer about keywords; it is about **Entity-Attribute Relationships**. This architect solves for topical saturation by mapping the entire contextual graph.
+                      <h2 className="text-6xl font-serif italic mb-6 tracking-tighter">Semantic SEO & Content Gap Engine.</h2>
+                      <p className="text-xl leading-relaxed text-[#141414]/70 font-light">
+                        Modern search engines do not rank individual keywords—they evaluate <strong>Topical Authority</strong>, <strong>Knowledge Graph Completion</strong>, and <strong>Internal Link Equity</strong>.
                       </p>
                     </section>
                     
-                    <div className="grid grid-cols-2 gap-12">
-                      <motion.div 
-                        whileHover={{ y: -5 }}
-                        className="border border-[#141414] p-8 space-y-6 bg-white"
-                      >
-                        <div className="w-12 h-12 bg-[#141414] text-white flex items-center justify-center font-bold text-xl">01</div>
-                        <h3 className="font-bold uppercase tracking-widest text-sm">Define Seed Entity</h3>
-                        <p className="text-sm opacity-70 italic leading-relaxed">Provide a core industry entity (e.g., "Renewable Energy"). The engine will crawl related concepts from the Global Knowledge Graph to establish your authority boundaries.</p>
-                      </motion.div>
-                      <motion.div 
-                        whileHover={{ y: -5 }}
-                        className="border border-[#141414] p-8 space-y-6 bg-white"
-                      >
-                        <div className="w-12 h-12 bg-[#141414] text-white flex items-center justify-center font-bold text-xl">02</div>
-                        <h3 className="font-bold uppercase tracking-widest text-sm">Visualize Saturation</h3>
-                        <p className="text-sm opacity-70 italic leading-relaxed">Switch to **Visual** mode. Trace the internal linking logic. A healthy topical map shows clear hierarchical distribution between pillars and supporting nodes.</p>
-                      </motion.div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="border border-[#141414] p-6 space-y-4 bg-white">
+                        <div className="w-10 h-10 bg-[#141414] text-white flex items-center justify-center font-bold text-lg">01</div>
+                        <h3 className="font-bold uppercase tracking-wider text-xs">Topical Map Synthesis</h3>
+                        <p className="text-xs opacity-70 italic leading-relaxed">
+                          Extracts core Pillars, thematic Clusters, and Supporting entities with explicit internal linking logic to prevent topic cannibalization.
+                        </p>
+                      </div>
+
+                      <div className="border border-[#141414] p-6 space-y-4 bg-white">
+                        <div className="w-10 h-10 bg-[#141414] text-white flex items-center justify-center font-bold text-lg">02</div>
+                        <h3 className="font-bold uppercase tracking-wider text-xs">Content Gap Analysis</h3>
+                        <p className="text-xs opacity-70 italic leading-relaxed">
+                          Provide your existing published URLs. The matching engine compares entity token vectors to detect missing pages and assigns production priorities.
+                        </p>
+                      </div>
+
+                      <div className="border border-[#141414] p-6 space-y-4 bg-white">
+                        <div className="w-10 h-10 bg-[#141414] text-white flex items-center justify-center font-bold text-lg">03</div>
+                        <h3 className="font-bold uppercase tracking-wider text-xs">Competitor 2x2 Matrix</h3>
+                        <p className="text-xs opacity-70 italic leading-relaxed">
+                          Compares competitor URLs side-by-side to highlight Competitor Threats (steal targets), Blue Ocean white-space, and your defensive moat.
+                        </p>
+                      </div>
                     </div>
 
-                    <section className="space-y-8">
-                      <h3 className="text-xs font-mono uppercase tracking-[0.4em] opacity-40 border-b border-[#141414]/10 pb-4">The Hierarchical Blueprint</h3>
-                      <div className="grid grid-cols-3 gap-8">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Circle className="w-3 h-3 text-blue-500 fill-current" />
-                            <p className="font-bold uppercase text-[10px] tracking-widest">Pillars</p>
-                          </div>
-                          <p className="text-xs opacity-60">High-volume, broad intent macro-categories. These serve as the roots of your authority.</p>
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Circle className="w-3 h-3 text-amber-500 fill-current" />
-                            <p className="font-bold uppercase text-[10px] tracking-widest">Clusters</p>
-                          </div>
-                          <p className="text-xs opacity-60">Specific informational sub-topics that target long-tail queries and user pain points.</p>
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Circle className="w-3 h-3 text-emerald-500 fill-current" />
-                            <p className="font-bold uppercase text-[10px] tracking-widest">Supporting</p>
-                          </div>
-                          <p className="text-xs opacity-60">Entity definitions and entities identified via AI to solve for Search Engine confidence.</p>
-                        </div>
-                      </div>
-                    </section>
-
-                    <section className="bg-[#141414] text-[#E4E3E0] p-10 relative overflow-hidden group">
+                    <section className="bg-[#141414] text-[#E4E3E0] p-10 relative overflow-hidden">
                       <div className="relative z-10">
-                        <p className="font-serif italic text-3xl leading-snug mb-4">"Search Engines do not rank pages. They rank knowledge representations."</p>
+                        <p className="font-serif italic text-2xl leading-snug mb-3">
+                          "Search Engines do not rank pages. They rank knowledge representations."
+                        </p>
                         <p className="text-[10px] font-mono uppercase opacity-50 tracking-widest">— Semantic SEO Philosophy</p>
                       </div>
-                      <Network className="absolute -right-10 -bottom-10 w-48 h-48 opacity-10 group-hover:scale-110 transition-transform duration-1000" />
+                      <Network className="absolute -right-10 -bottom-10 w-48 h-48 opacity-10" />
                     </section>
                   </div>
                 </motion.div>
               )}
 
-              {/* Sidebar: Entity Details */}
-              <aside className={`w-96 bg-[#F0EFED] border-l border-[#141414] flex flex-col transition-all ${selectedNode ? 'translate-x-0' : 'translate-x-full absolute right-0'}`}>
-                {selectedNode ? (
+              {/* Sidebar: Entity Details, Authority Flow, and Gap Status */}
+              <aside className={`w-[420px] bg-[#F0EFED] border-l border-[#141414] flex flex-col transition-all z-20 shrink-0 ${
+                selectedNode ? 'translate-x-0' : 'hidden'
+              }`}>
+                {selectedNode && (
                   <>
-                    <div className="p-6 border-b border-[#141414] flex justify-between items-center">
-                      <h3 className="text-xs font-mono uppercase tracking-widest opacity-50">Entity Blueprint</h3>
-                      <button onClick={() => setSelectedNodeId(null)} className="p-1 hover:bg-[#141414]/10 transition-colors">
+                    <div className="p-5 border-b border-[#141414] flex justify-between items-center bg-[#E4E3E0]">
+                      <h3 className="text-xs font-mono uppercase tracking-widest opacity-60">Entity Blueprint</h3>
+                      <button 
+                        onClick={() => setSelectedNodeId(null)} 
+                        className="p-1 hover:bg-[#141414]/10 transition-colors border border-transparent hover:border-[#141414]/20"
+                        title="Close Inspector"
+                      >
                         <ChevronRight className="w-4 h-4 rotate-180" />
                       </button>
                     </div>
-                    <div className="p-8 space-y-8 overflow-y-auto">
+
+                    <div className="p-6 space-y-6 overflow-y-auto flex-1">
+                      {/* Node Title & Tags */}
                       <div>
-                        <h4 className="text-4xl font-serif italic mb-2">{selectedNode.label}</h4>
-                        <div className="flex gap-2">
-                          <span className="text-[10px] font-mono uppercase border border-[#141414] px-2 py-0.5 rounded-full">{selectedNode.type}</span>
-                          <span className="text-[10px] font-mono uppercase border border-[#141414] px-2 py-0.5 rounded-full">{selectedNode.intent}</span>
+                        <h4 className="text-3xl font-serif italic mb-2 leading-tight">{selectedNode.label}</h4>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="text-[10px] font-mono uppercase border border-[#141414] px-2 py-0.5 rounded-full bg-white">
+                            {selectedNode.type}
+                          </span>
+                          <span className="text-[10px] font-mono uppercase border border-[#141414] px-2 py-0.5 rounded-full bg-white">
+                            {selectedNode.intent}
+                          </span>
+                          {selectedNodeGap && (
+                            <span className="text-[10px] font-mono uppercase border border-[#141414]/40 px-2 py-0.5 rounded-full bg-neutral-100">
+                              {selectedNodeGap.category}
+                            </span>
+                          )}
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-[10px] font-mono opacity-50 uppercase tracking-tighter">
+                      {/* Content Gap & Competitor Status Card */}
+                      {selectedNodeGap && (
+                        <div className={`p-4 border border-[#141414] ${
+                          selectedNodeGap.userCovered 
+                            ? 'bg-emerald-50/50' 
+                            : selectedNodeGap.matrixStatus === 'competitor_advantage'
+                            ? 'bg-rose-50/50'
+                            : 'bg-amber-50/50'
+                        }`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-mono uppercase tracking-wider font-bold">
+                              Content Coverage Status
+                            </span>
+                            <button
+                              onClick={() => handleToggleCovered(selectedNode.id)}
+                              className="text-[10px] font-mono uppercase underline hover:opacity-75"
+                            >
+                              {selectedNodeGap.userCovered ? 'Mark as Gap' : '✓ Mark as Covered'}
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-2 mb-2">
+                            {selectedNodeGap.userCovered ? (
+                              <span className="flex items-center gap-1 text-xs font-bold text-emerald-800">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Published ({selectedNodeGap.userMatchScore}% match)
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-xs font-bold text-amber-900">
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                                Content Gap [{selectedNodeGap.priority} Priority]
+                              </span>
+                            )}
+                          </div>
+
+                          {selectedNodeGap.userMatchedUrl && (
+                            <div className="text-[11px] font-mono text-emerald-900 truncate mb-1 flex items-center gap-1">
+                              <ExternalLink className="w-3 h-3 shrink-0" />
+                              <span className="truncate">{selectedNodeGap.userMatchedUrl}</span>
+                            </div>
+                          )}
+
+                          <div className="text-[11px] text-[#141414]/80 mt-2 pt-2 border-t border-[#141414]/10">
+                            <strong>Action:</strong> {selectedNodeGap.recommendedAction}
+                          </div>
+
+                          <div className="text-[10px] font-mono text-[#141414]/60 mt-1">
+                            Target Slug: <code>{selectedNodeGap.targetSlug}</code>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Architecture Description */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 text-[10px] font-mono opacity-50 uppercase tracking-wider">
                           <Info className="w-3 h-3" /> Architecture Overview
                         </div>
-                        <p className="text-sm leading-relaxed text-[#141414]/80">{selectedNode.description}</p>
+                        <p className="text-xs leading-relaxed text-[#141414]/80">{selectedNode.description}</p>
                       </div>
 
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-2 text-[10px] font-mono opacity-50 uppercase tracking-tighter">
-                          <Layers className="w-3 h-3" /> Semantic Connections
+                      {/* Authority Flow Visualizer Component */}
+                      <AuthorityFlowView
+                        mapData={mapData}
+                        node={selectedNode}
+                        onSelectNode={setSelectedNodeId}
+                      />
+
+                      {/* Semantic Entity Connections */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-[10px] font-mono opacity-50 uppercase tracking-wider">
+                          <Layers className="w-3 h-3" /> Semantic Entities ({selectedNode.entities.length})
                         </div>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-1.5">
                           {selectedNode.entities.map((ent, i) => (
-                            <span key={i} className="text-[10px] font-mono border border-[#141414]/20 bg-white/50 px-2 py-1 flex items-center gap-1">
+                            <span key={i} className="text-[10px] font-mono border border-[#141414]/20 bg-white px-2 py-1 flex items-center gap-1">
                               <Circle className="w-1.5 h-1.5 fill-[#141414]" />
                               {ent}
                             </span>
@@ -578,34 +799,17 @@ ${n.description}
                         </div>
                       </div>
 
-                      <div className="space-y-4 bg-white border border-[#141414] p-6">
-                        <div className="flex items-center gap-2 text-[10px] font-mono opacity-50 uppercase tracking-tighter">
-                          <LinkIcon className="w-3 h-3" /> Internal Linking Strategy
+                      {/* Internal Linking Strategy */}
+                      <div className="space-y-3 bg-white border border-[#141414] p-4">
+                        <div className="flex items-center gap-2 text-[10px] font-mono opacity-50 uppercase tracking-wider">
+                          <LinkIcon className="w-3 h-3" /> Internal Linking Directives
                         </div>
-                        <p className="text-sm leading-relaxed font-serif italic text-blue-900">{selectedNode.linkingLogic}</p>
-                        
-                        <div className="pt-4 border-t border-[#141414]/10 space-y-2">
-                          <p className="text-[10px] uppercase font-mono opacity-50">Outbound Relationships</p>
-                          {mapData.links.filter(l => l.source === selectedNode.id).map((link, i) => (
-                             <div key={i} className="flex items-center gap-2 text-[11px] group cursor-pointer" onClick={() => setSelectedNodeId(link.target)}>
-                               <span className="opacity-40 italic">{link.relationship}</span>
-                               <ArrowRight className="w-3 h-3 opacity-40 group-hover:opacity-100 transition-opacity" />
-                               <span className="font-bold underline decoration-[#141414]/20 underline-offset-4 group-hover:decoration-[#141414] transition-all">
-                                {mapData.nodes.find(n => n.id === link.target)?.label}
-                               </span>
-                             </div>
-                          ))}
-                           {mapData.links.filter(l => l.source === selectedNode.id).length === 0 && (
-                            <p className="text-[10px] italic opacity-40">No specified outbound links.</p>
-                          )}
-                        </div>
+                        <p className="text-xs leading-relaxed font-serif italic text-blue-900">
+                          {selectedNode.linkingLogic}
+                        </p>
                       </div>
                     </div>
                   </>
-                ) : (
-                   <div className="flex-1 flex items-center justify-center p-8 text-center opacity-30 italic text-sm">
-                    Select a node to inspect its semantic properties.
-                   </div>
                 )}
               </aside>
             </div>
@@ -614,15 +818,19 @@ ${n.description}
       </main>
 
       {/* Footer / Status Bar */}
-      <footer className="bg-[#141414] text-[#E4E3E0] p-2 flex items-center justify-between text-[10px] font-mono uppercase tracking-widest px-6">
-        <div className="flex gap-4">
-          <span>Architect Mode: Operational</span>
-          <span className="opacity-50">|</span>
-          <span>Engine: Gemini 3.1 Pro</span>
+      <footer className="bg-[#141414] text-[#E4E3E0] p-2.5 flex flex-wrap items-center justify-between text-[10px] font-mono uppercase tracking-widest px-6">
+        <div className="flex items-center gap-4">
+          <span>Architect Engine: Operational</span>
+          <span className="opacity-40">|</span>
+          <span>Coverage Engine: Active</span>
+          <span className="opacity-40">|</span>
+          <span>Model: Gemini 3.1 Pro</span>
         </div>
-        <div className="opacity-50">
-          Topical Saturation Threshold: Optimized
-        </div>
+        {mapData && (
+          <div className="opacity-70">
+            {gapAnalysis.summary.userCoveredCount} Covered • {gapAnalysis.summary.userGapCount} Gaps • {gapAnalysis.summary.competitorAdvantageCount} Competitor Threats
+          </div>
+        )}
       </footer>
     </div>
   );

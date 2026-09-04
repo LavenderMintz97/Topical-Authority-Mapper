@@ -7,8 +7,8 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 export default defineConfig(({ mode }) => {
   return {
-    // 🔑 CRITICAL: Base path for GitHub Pages subdirectory
-    base: '/Topical-Authority-Mapper/',
+    // 🔑 Base path: '/Topical-Authority-Mapper/' for GitHub Pages production build, '/' for local dev
+    base: mode === 'production' ? '/Topical-Authority-Mapper/' : '/',
 
     plugins: [
       react(),
