@@ -1,22 +1,11 @@
-# Use an official Python runtime as a parent image
-FROM python:3.10-slim
+# Use a lightweight Nginx web server
+FROM nginx:alpine
 
-# Set environment variables to keep Python from writing pyc files and buffering stdout
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# Copy all your repository files (including your JSON data) into Nginx's web folder
+COPY . /usr/share/nginx/html/
 
-# Set the working directory in the container
-WORKDIR /app
-
-# Copy the requirements file and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the rest of the application code
-COPY . .
-
-# Expose the default port Google Cloud Run listens on
+# Expose port 8080 for Google Cloud Run
 EXPOSE 8080
 
-# Run the application (Change 'app.py' to whatever your main script is named, e.g., main.py)
-CMD ["python", "app.py"]
+# Configure Nginx to run on port 8080 instead of the default port 80
+CMD ["nginx", "-g", "daemon off;", "-c", "/etc/nginx/nginx.conf"]
