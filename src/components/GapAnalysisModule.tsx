@@ -16,12 +16,14 @@ import {
   Swords, 
   Tag, 
   Trophy, 
+  TrendingUp,
   X 
 } from 'lucide-react';
 import { TopicalMap, NodeGapItem, GapAnalysisSummary, FilterOptions } from '../types';
 import { filterGapItems } from '../utils/gapAnalyzer';
 import CategoryFilterBar from './CategoryFilterBar';
 import CompetitorMatrixView from './CompetitorMatrixView';
+import GapDemandTrendChart from './GapDemandTrendChart';
 
 interface Props {
   mapData: TopicalMap;
@@ -36,6 +38,7 @@ interface Props {
   onSelectNode: (nodeId: string) => void;
   selectedNodeId: string | null;
   onToggleCovered: (nodeId: string) => void;
+  onGenerateBrief?: (node: NodeGapItem) => void;
 }
 
 export default function GapAnalysisModule({
@@ -50,9 +53,10 @@ export default function GapAnalysisModule({
   onLoadSampleUrls,
   onSelectNode,
   selectedNodeId,
-  onToggleCovered
+  onToggleCovered,
+  onGenerateBrief
 }: Props) {
-  const [activeTab, setActiveTab] = useState<'audit' | 'matrix' | 'urls' | 'roadmap'>('audit');
+  const [activeTab, setActiveTab] = useState<'audit' | 'matrix' | 'trends' | 'roadmap' | 'urls'>('audit');
   const [filters, setFilters] = useState<FilterOptions>({
     searchQuery: '',
     nodeType: 'all',
@@ -304,6 +308,14 @@ ${gaps
             <Swords className="w-3.5 h-3.5" /> Competitor 2x2 Matrix
           </button>
           <button
+            onClick={() => setActiveTab('trends')}
+            className={`text-xs font-mono uppercase px-4 py-2 transition-colors border-l border-[#141414] flex items-center gap-2 ${
+              activeTab === 'trends' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/5'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5 text-blue-600" /> 12-Mo Demand Trends
+          </button>
+          <button
             onClick={() => setActiveTab('roadmap')}
             className={`text-xs font-mono uppercase px-4 py-2 transition-colors border-l border-[#141414] flex items-center gap-2 ${
               activeTab === 'roadmap' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/5'
@@ -321,6 +333,18 @@ ${gaps
           </button>
         </div>
       </div>
+
+      {/* 12-Month Demand Trends Tab */}
+      {activeTab === 'trends' && (
+        <div className="p-8 overflow-y-auto flex-1 max-w-6xl mx-auto w-full space-y-6">
+          <GapDemandTrendChart
+            gapItems={gapItems}
+            categories={categories}
+            seed={mapData.seed}
+            onSelectNode={onSelectNode}
+          />
+        </div>
+      )}
 
       {/* URL Input & Setup Tab */}
       {activeTab === 'urls' && (
@@ -420,6 +444,7 @@ ${gaps
             items={gapItems}
             onSelectNode={onSelectNode}
             selectedNodeId={selectedNodeId}
+            onGenerateBrief={onGenerateBrief}
           />
         </div>
       )}
@@ -472,15 +497,29 @@ ${gaps
                     <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-[#141414]/60 pt-2 border-t border-[#141414]/10">
                       <span>Target Slug: <strong className="text-blue-900">{item.targetSlug}</strong></span>
                       <span>Intent: {item.intent}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggleCovered(item.nodeId);
-                        }}
-                        className="text-[10px] uppercase text-emerald-700 hover:underline"
-                      >
-                        ✓ Mark as Published
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {onGenerateBrief && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onGenerateBrief(item);
+                            }}
+                            className="bg-[#141414] text-[#E4E3E0] hover:bg-blue-600 hover:text-white px-2.5 py-1 text-[10px] font-mono uppercase font-bold flex items-center gap-1 transition-colors"
+                          >
+                            <Sparkles className="w-3 h-3 text-amber-300" />
+                            <span>AI Brief & LSI</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleCovered(item.nodeId);
+                          }}
+                          className="text-[10px] uppercase text-emerald-700 hover:underline"
+                        >
+                          ✓ Mark as Published
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -509,17 +548,31 @@ ${gaps
                       <span className="font-semibold text-xs">{item.nodeLabel}</span>
                       <span className="text-[10px] font-mono text-neutral-500">{item.category}</span>
                     </div>
-                    <div className="text-[10px] font-mono text-neutral-600 flex justify-between">
+                    <div className="text-[10px] font-mono text-neutral-600 flex justify-between items-center">
                       <span>Target: {item.targetSlug}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggleCovered(item.nodeId);
-                        }}
-                        className="text-[10px] uppercase text-emerald-700 hover:underline"
-                      >
-                        ✓ Mark Published
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {onGenerateBrief && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onGenerateBrief(item);
+                            }}
+                            className="bg-[#141414] text-[#E4E3E0] hover:bg-blue-600 hover:text-white px-2 py-0.5 text-[9px] font-mono uppercase font-bold flex items-center gap-1 transition-colors"
+                          >
+                            <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                            <span>AI Brief</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleCovered(item.nodeId);
+                          }}
+                          className="text-[10px] uppercase text-emerald-700 hover:underline"
+                        >
+                          ✓ Mark Published
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -542,7 +595,7 @@ ${gaps
           />
 
           {/* Table Header */}
-          <div className="grid grid-cols-[140px_2fr_130px_1fr_120px_90px] px-6 py-2.5 border-b border-[#141414] bg-[#EBE9E6] text-[10px] font-mono uppercase tracking-wider sticky top-0 z-10">
+          <div className="grid grid-cols-[130px_2fr_120px_1fr_100px_140px] px-6 py-2.5 border-b border-[#141414] bg-[#EBE9E6] text-[10px] font-mono uppercase tracking-wider sticky top-0 z-10">
             <span>Status</span>
             <span>Topic / Entity Node</span>
             <span>Category (Cluster)</span>
@@ -562,7 +615,7 @@ ${gaps
                 <div
                   key={item.nodeId}
                   onClick={() => onSelectNode(item.nodeId)}
-                  className={`grid grid-cols-[140px_2fr_130px_1fr_120px_90px] px-6 py-3.5 border-b border-[#141414]/15 items-center cursor-pointer transition-colors ${
+                  className={`grid grid-cols-[130px_2fr_120px_1fr_100px_140px] px-6 py-3.5 border-b border-[#141414]/15 items-center cursor-pointer transition-colors ${
                     selectedNodeId === item.nodeId
                       ? 'bg-[#141414] text-[#E4E3E0]'
                       : item.userCovered
@@ -647,7 +700,20 @@ ${gaps
                   </div>
 
                   {/* Action */}
-                  <div className="text-right">
+                  <div className="text-right flex items-center justify-end gap-1.5">
+                    {onGenerateBrief && !item.userCovered && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onGenerateBrief(item);
+                        }}
+                        className="text-[9px] font-mono uppercase px-2 py-1 bg-[#141414] text-[#E4E3E0] hover:bg-blue-600 hover:text-white flex items-center gap-1 transition-colors"
+                        title="Generate AI Content Brief & LSI Keywords"
+                      >
+                        <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                        <span>Brief</span>
+                      </button>
+                    )}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

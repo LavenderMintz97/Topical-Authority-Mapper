@@ -30,7 +30,10 @@ import {
   ExternalLink,
   ShieldAlert,
   Sparkles,
-  Trophy
+  Trophy,
+  BookOpen,
+  HelpCircle,
+  Compass
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { generateTopicalMap } from './services/geminiService';
@@ -39,29 +42,86 @@ import TopicalGraph from './components/TopicalGraph';
 import GapAnalysisModule from './components/GapAnalysisModule';
 import CategoryFilterBar from './components/CategoryFilterBar';
 import AuthorityFlowView from './components/AuthorityFlowView';
+import GuidesCenter from './components/GuidesCenter';
+import ContentBriefModal from './components/ContentBriefModal';
 import { analyzeTopicalMapGaps, generateSampleUrls, filterGapItems } from './utils/gapAnalyzer';
+import { loadPersistedState, savePersistedState, clearPersistedState } from './utils/storage';
 
 export default function App() {
-  const [seed, setSeed] = useState('');
+  const [savedSession] = useState(() => loadPersistedState());
+
+  const [seed, setSeed] = useState(() => savedSession?.seed || '');
   const [loading, setLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingStatus, setLoadingStatus] = useState('');
-  const [mapData, setMapData] = useState<TopicalMap | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'graph' | 'gaps' | 'json' | 'help'>('help');
+  const [mapData, setMapData] = useState<TopicalMap | null>(() => savedSession?.mapData || null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(() => savedSession?.selectedNodeId || null);
+  const [viewMode, setViewMode] = useState<'list' | 'graph' | 'gaps' | 'json' | 'help'>(() => {
+    if (savedSession?.viewMode) return savedSession.viewMode;
+    if (savedSession?.mapData) return 'graph';
+    return 'help';
+  });
 
   // URL inputs for Content Gap & Competitor Analysis
-  const [userUrlsText, setUserUrlsText] = useState<string>('');
-  const [competitorUrlsText, setCompetitorUrlsText] = useState<string>('');
+  const [userUrlsText, setUserUrlsText] = useState<string>(() => savedSession?.userUrlsText || '');
+  const [competitorUrlsText, setCompetitorUrlsText] = useState<string>(() => savedSession?.competitorUrlsText || '');
 
   // Category and Node Filters
-  const [filters, setFilters] = useState<FilterOptions>({
+  const [filters, setFilters] = useState<FilterOptions>(() => savedSession?.filters || {
     searchQuery: '',
     nodeType: 'all',
     intent: 'all',
     category: 'all',
     gapStatus: 'all'
   });
+
+  const [briefModalNode, setBriefModalNode] = useState<NodeGapItem | SEOEntity | null>(null);
+  const [isBriefModalOpen, setIsBriefModalOpen] = useState(false);
+
+  const handleOpenBriefModal = (nodeItem: NodeGapItem | SEOEntity) => {
+    setBriefModalNode(nodeItem);
+    setIsBriefModalOpen(true);
+  };
+
+  const [lastSavedTime, setLastSavedTime] = useState<number | null>(() => savedSession?.timestamp || null);
+
+  // Auto-save session state to local storage whenever critical properties change
+  useEffect(() => {
+    if (mapData || userUrlsText || competitorUrlsText || seed) {
+      const ok = savePersistedState({
+        seed,
+        mapData,
+        userUrlsText,
+        competitorUrlsText,
+        filters,
+        selectedNodeId,
+        viewMode
+      });
+      if (ok) {
+        setLastSavedTime(Date.now());
+      }
+    }
+  }, [seed, mapData, userUrlsText, competitorUrlsText, filters, selectedNodeId, viewMode]);
+
+  const handleClearSession = () => {
+    if (window.confirm('Reset current topical map, URL lists, and filter states? This will clear locally cached session data.')) {
+      clearPersistedState();
+      setMapData(null);
+      setSeed('');
+      setUserUrlsText('');
+      setCompetitorUrlsText('');
+      setSelectedNodeId(null);
+      setFilters({
+        searchQuery: '',
+        nodeType: 'all',
+        intent: 'all',
+        category: 'all',
+        gapStatus: 'all'
+      });
+      setViewMode('help');
+      setLastSavedTime(null);
+    }
+  };
 
   const loadingMessages = [
     "Initializing Semantic Neural Engine...",
@@ -72,6 +132,14 @@ export default function App() {
     "Tracing Internal Linking Logic Paths...",
     "Polishing Semantic Domain Blueprint...",
     "Synthesizing Strategic Authority Map..."
+  ];
+
+  // Quick sample topics
+  const sampleTopics = [
+    "Vertical Farming",
+    "Cold Brew Coffee",
+    "Renewable Energy Grid",
+    "B2B SaaS Architecture"
   ];
 
   // Run Gap Analysis across current mapData and URLs
@@ -221,8 +289,11 @@ ${mapData.nodes.map(n => {
     a.click();
   };
 
-  const handleGenerate = async () => {
-    if (!seed.trim()) return;
+  const handleGenerate = async (targetSeed?: string) => {
+    const effectiveSeed = (targetSeed || seed).trim();
+    if (!effectiveSeed) return;
+    if (targetSeed) setSeed(targetSeed);
+
     setLoading(true);
     setLoadingProgress(0);
     setLoadingStatus(loadingMessages[0]);
@@ -242,7 +313,7 @@ ${mapData.nodes.map(n => {
     }, 200);
 
     try {
-      const data = await generateTopicalMap(seed);
+      const data = await generateTopicalMap(effectiveSeed);
       clearInterval(progressInterval);
       setLoadingProgress(100);
       setLoadingStatus("Analysis Complete. Initializing Gap & Authority Engine...");
@@ -255,7 +326,7 @@ ${mapData.nodes.map(n => {
 
         // Pre-populate sample URLs if user hasn't supplied any yet
         if (!userUrlsText.trim()) {
-          const sample = generateSampleUrls(seed);
+          const sample = generateSampleUrls(effectiveSeed);
           setUserUrlsText(sample.userUrls.join('\n'));
           setCompetitorUrlsText(sample.competitorUrls.join('\n'));
         }
@@ -346,9 +417,31 @@ ${mapData.nodes.map(n => {
                   viewMode === 'help' ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'
                 }`}
               >
-                <Info className="w-3.5 h-3.5" /> Help
+                <BookOpen className="w-3.5 h-3.5" /> Guides & Help
               </button>
             </div>
+
+            {/* Auto-saved badge and Reset button */}
+            {lastSavedTime && (
+              <div className="hidden lg:flex items-center gap-2">
+                <span 
+                  className="flex items-center gap-1.5 text-[10px] font-mono text-emerald-800 bg-emerald-100/90 border border-emerald-300 px-2 py-1 rounded" 
+                  title="Autosaved to local storage. Your session will resume automatically next time."
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                  <span>Autosaved</span>
+                </span>
+                {(mapData || seed || userUrlsText) && (
+                  <button
+                    onClick={handleClearSession}
+                    title="Clear cached session data and start fresh"
+                    className="text-[10px] font-mono uppercase border border-neutral-300 hover:border-[#141414] hover:bg-neutral-200 px-2 py-1 transition-colors text-neutral-600"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Export buttons */}
             {mapData && (
@@ -405,15 +498,19 @@ ${mapData.nodes.map(n => {
           <div className="text-[10rem] font-mono absolute -bottom-20 -right-20">01010101</div>
         </div>
         
-        <div className="max-w-7xl mx-auto px-6 py-12 relative z-10">
+        <div className="max-w-7xl mx-auto px-6 py-10 relative z-10">
           <div className="max-w-3xl">
             <motion.h2 
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              className="text-5xl font-serif italic mb-6 leading-tight"
+              className="text-4xl md:text-5xl font-serif italic mb-4 leading-tight"
             >
               Architect your Semantic Authority & Close Content Gaps.
             </motion.h2>
+            <p className="text-xs text-[#141414]/70 mb-4 font-mono">
+              Build high-ranking topic clusters, trace internal linking authority flow, and find what competitors publish.
+            </p>
+
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 opacity-30" />
@@ -422,17 +519,33 @@ ${mapData.nodes.map(n => {
                   value={seed}
                   onChange={(e) => setSeed(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-                  placeholder="Define your Seed Entity (e.g. 'Vertical Farming', 'Cloud Architecture')"
-                  className="w-full bg-white border border-[#141414] py-4 pl-12 pr-4 text-lg focus:outline-none focus:ring-2 focus:ring-[#141414]/10 transition-all font-serif"
+                  placeholder="Define your Seed Entity (e.g. 'Vertical Farming', 'Cold Brew Coffee')"
+                  className="w-full bg-white border border-[#141414] py-3.5 pl-12 pr-4 text-base focus:outline-none focus:ring-2 focus:ring-[#141414]/10 transition-all font-serif"
                 />
               </div>
               <button 
-                onClick={handleGenerate}
+                onClick={() => handleGenerate()}
                 disabled={loading || !seed}
-                className="bg-[#141414] text-[#E4E3E0] px-8 font-bold uppercase tracking-widest disabled:opacity-50 flex items-center gap-3 active:scale-95 transition-transform text-xs"
+                className="bg-[#141414] text-[#E4E3E0] px-7 font-bold uppercase tracking-widest disabled:opacity-50 flex items-center gap-3 active:scale-95 transition-transform text-xs"
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Network className="w-4 h-4" /> Analyze</>}
               </button>
+            </div>
+
+            {/* Beginner Quick-Launch Chips */}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-[10px] font-mono uppercase opacity-50 flex items-center gap-1">
+                <Compass className="w-3 h-3" /> Quick Examples:
+              </span>
+              {sampleTopics.map((topic, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleGenerate(topic)}
+                  className="text-[11px] font-mono bg-white/80 hover:bg-white border border-[#141414]/20 px-2.5 py-0.5 rounded-full transition-all hover:border-[#141414] active:scale-95"
+                >
+                  {topic}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -475,346 +588,352 @@ ${mapData.nodes.map(n => {
           </div>
         )}
 
-        <AnimatePresence mode="wait">
-          {!mapData ? (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex-1 flex items-center justify-center p-12 text-center"
-            >
-              <div className="max-w-md">
-                <Network className="w-16 h-16 mx-auto mb-6 opacity-10" />
-                <p className="text-sm opacity-50 uppercase tracking-widest font-mono">
-                  Enter a seed topic above to generate the topical map and perform gap & competitor analysis.
+        {/* View Mode: Guides & Help Center (Always accessible) */}
+        {viewMode === 'help' ? (
+          <div className="flex-1 flex overflow-hidden">
+            <GuidesCenter />
+          </div>
+        ) : !mapData ? (
+          /* Empty State Landing Screen */
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex-1 flex flex-col items-center justify-center p-8 md:p-16 text-center bg-[#FBFBFA]"
+          >
+            <div className="max-w-xl space-y-6">
+              <div className="w-16 h-16 mx-auto rounded-full bg-[#E4E3E0] border border-[#141414]/20 flex items-center justify-center">
+                <Workflow className="w-8 h-8 text-[#141414]" />
+              </div>
+
+              <div>
+                <h3 className="text-2xl font-serif italic mb-2">Ready to generate your Topical Architecture?</h3>
+                <p className="text-xs text-[#141414]/70 leading-relaxed font-sans max-w-md mx-auto">
+                  Type any industry, keyword, or product into the search bar above to create a full pillar-and-cluster semantic map with internal linking directives.
                 </p>
               </div>
-            </motion.div>
-          ) : (
-            <div className="flex-1 flex overflow-hidden">
-              {/* VIEW 1: Architecture List View with Category and Gap Filters */}
-              {viewMode === 'list' && (
-                <div className="flex-1 border-r border-[#141414] flex flex-col overflow-hidden bg-white">
-                  {/* Category Filter Bar */}
-                  <CategoryFilterBar
-                    filters={filters}
-                    onChange={setFilters}
-                    categories={gapAnalysis.categories}
-                    totalCount={mapData.nodes.length}
-                    filteredCount={filteredListItems.length}
-                    showGapFilter={true}
-                  />
 
-                  {/* List Header */}
-                  <div className="grid grid-cols-[110px_2fr_130px_110px_90px_40px] px-6 py-3 border-b border-[#141414] bg-[#F0EFED] text-[10px] font-mono uppercase tracking-wider sticky top-0 z-10">
-                    <span>Type</span>
-                    <span>Node / Topic</span>
-                    <span>Category</span>
-                    <span>Status</span>
-                    <span>Intent</span>
-                    <span></span>
-                  </div>
+              {/* Quick Template Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+                {sampleTopics.map((topic, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleGenerate(topic)}
+                    className="p-3.5 border border-[#141414]/20 bg-white hover:border-[#141414] hover:shadow-sm transition-all group"
+                  >
+                    <div className="flex items-center justify-between text-xs font-bold mb-1">
+                      <span>{topic}</span>
+                      <ArrowRight className="w-3 h-3 text-[#141414]/40 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                    <p className="text-[10px] text-[#141414]/60 font-mono">Click to analyze full topic map & gaps</p>
+                  </button>
+                ))}
+              </div>
 
-                  {/* List Rows */}
-                  <div className="flex-1 overflow-y-auto">
-                    {filteredListItems.length === 0 ? (
-                      <div className="p-12 text-center text-sm font-mono opacity-50">
-                        No topic nodes match the current filter selection.
-                      </div>
-                    ) : (
-                      filteredListItems.map((item) => (
-                        <div 
-                          key={item.nodeId}
-                          onClick={() => setSelectedNodeId(item.nodeId)}
-                          id={`node-${item.nodeId}`}
-                          className={`grid grid-cols-[110px_2fr_130px_110px_90px_40px] px-6 py-4 border-b border-[#141414]/10 cursor-pointer items-center transition-colors ${
-                            selectedNodeId === item.nodeId
-                              ? 'bg-[#141414] text-[#E4E3E0]'
-                              : 'hover:bg-[#141414]/5 bg-white'
-                          }`}
-                        >
-                          <span className="text-[10px] font-mono uppercase opacity-80 flex items-center">
-                            <Circle className={`w-2 h-2 mr-2 fill-current ${
-                              item.nodeType === 'pillar' ? 'text-blue-500' : item.nodeType === 'cluster' ? 'text-amber-500' : 'text-emerald-500'
-                            }`} />
-                            {item.nodeType}
-                          </span>
-
-                          <span className="font-bold text-xs flex items-center gap-2 pr-2">
-                            <span className="truncate">{item.nodeLabel}</span>
-                            {item.nodeType === 'pillar' && <Database className="w-3 h-3 opacity-30 shrink-0" />}
-                          </span>
-
-                          <span className="text-[11px] font-mono opacity-70 truncate">
-                            {item.category}
-                          </span>
-
-                          <div>
-                            {item.userCovered ? (
-                              <span className="text-[9px] font-mono uppercase text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 border border-emerald-200">
-                                ✓ Covered
-                              </span>
-                            ) : (
-                              <span className="text-[9px] font-mono uppercase text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 border border-amber-200">
-                                ⚠ Gap ({item.priority})
-                              </span>
-                            )}
-                          </div>
-
-                          <span className="text-xs opacity-70 italic">{item.intent}</span>
-
-                          <span className="flex items-center justify-end">
-                            <ChevronRight className={`w-4 h-4 transition-transform ${selectedNodeId === item.nodeId ? 'translate-x-1' : ''}`} />
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* VIEW 2: Visual Graph with Live Gap & Category Filters */}
-              {viewMode === 'graph' && (
-                <div className="flex-1 border-r border-[#141414] flex flex-col overflow-hidden bg-white">
-                  {/* Category Filter on Graph */}
-                  <CategoryFilterBar
-                    filters={filters}
-                    onChange={setFilters}
-                    categories={gapAnalysis.categories}
-                    totalCount={mapData.nodes.length}
-                    filteredCount={filteredListItems.length}
-                    showGapFilter={true}
-                  />
-
-                  <div className="flex-1 relative overflow-hidden">
-                    <TopicalGraph 
-                      data={mapData} 
-                      onSelectNode={setSelectedNodeId} 
-                      selectedNodeId={selectedNodeId}
-                      filters={filters}
-                      gapItems={gapAnalysis.items}
-                      showGapOverlayDefault={true}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* VIEW 3: Content Gap & Competitor Audit Module */}
-              {viewMode === 'gaps' && (
-                <div className="flex-1 border-r border-[#141414] flex flex-col overflow-hidden">
-                  <GapAnalysisModule
-                    mapData={mapData}
-                    gapItems={gapAnalysis.items}
-                    summary={gapAnalysis.summary}
-                    categories={gapAnalysis.categories}
-                    userUrlsText={userUrlsText}
-                    competitorUrlsText={competitorUrlsText}
-                    onUpdateUserUrls={setUserUrlsText}
-                    onUpdateCompetitorUrls={setCompetitorUrlsText}
-                    onLoadSampleUrls={handleLoadSampleUrls}
-                    onSelectNode={setSelectedNodeId}
-                    selectedNodeId={selectedNodeId}
-                    onToggleCovered={handleToggleCovered}
-                  />
-                </div>
-              )}
-
-              {/* VIEW 4: JSON Mode */}
-              {viewMode === 'json' && (
-                <div className="flex-1 bg-[#1a1a1a] text-[#a9b7c6] p-8 font-mono text-xs overflow-auto selection:bg-[#2b2b2b]">
-                  <pre className="whitespace-pre-wrap">
-                    {JSON.stringify({ topicalMap: mapData, gapAnalysis }, null, 2)}
-                  </pre>
-                </div>
-              )}
-
-              {/* VIEW 5: Help & Semantic Architecture Philosophy */}
-              {viewMode === 'help' && (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex-1 border-r border-[#141414] overflow-y-auto bg-[#E4E3E0] p-12"
+              <div className="pt-2">
+                <button
+                  onClick={() => setViewMode('help')}
+                  className="inline-flex items-center gap-1.5 text-xs font-mono uppercase underline text-[#141414]/70 hover:text-[#141414]"
                 >
-                  <div className="max-w-4xl mx-auto space-y-16">
-                    <section>
-                      <h2 className="text-6xl font-serif italic mb-6 tracking-tighter">Semantic SEO & Content Gap Engine.</h2>
-                      <p className="text-xl leading-relaxed text-[#141414]/70 font-light">
-                        Modern search engines do not rank individual keywords—they evaluate <strong>Topical Authority</strong>, <strong>Knowledge Graph Completion</strong>, and <strong>Internal Link Equity</strong>.
-                      </p>
-                    </section>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className="border border-[#141414] p-6 space-y-4 bg-white">
-                        <div className="w-10 h-10 bg-[#141414] text-white flex items-center justify-center font-bold text-lg">01</div>
-                        <h3 className="font-bold uppercase tracking-wider text-xs">Topical Map Synthesis</h3>
-                        <p className="text-xs opacity-70 italic leading-relaxed">
-                          Extracts core Pillars, thematic Clusters, and Supporting entities with explicit internal linking logic to prevent topic cannibalization.
-                        </p>
-                      </div>
+                  <BookOpen className="w-3.5 h-3.5" /> Read the 3-Minute Beginner's Guide
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        ) : (
+          <div className="flex-1 flex overflow-hidden">
+            {/* VIEW 1: Architecture List View with Category and Gap Filters */}
+            {viewMode === 'list' && (
+              <div className="flex-1 border-r border-[#141414] flex flex-col overflow-hidden bg-white">
+                {/* Category Filter Bar */}
+                <CategoryFilterBar
+                  filters={filters}
+                  onChange={setFilters}
+                  categories={gapAnalysis.categories}
+                  totalCount={mapData.nodes.length}
+                  filteredCount={filteredListItems.length}
+                  showGapFilter={true}
+                />
 
-                      <div className="border border-[#141414] p-6 space-y-4 bg-white">
-                        <div className="w-10 h-10 bg-[#141414] text-white flex items-center justify-center font-bold text-lg">02</div>
-                        <h3 className="font-bold uppercase tracking-wider text-xs">Content Gap Analysis</h3>
-                        <p className="text-xs opacity-70 italic leading-relaxed">
-                          Provide your existing published URLs. The matching engine compares entity token vectors to detect missing pages and assigns production priorities.
-                        </p>
-                      </div>
+                {/* List Header */}
+                <div className="grid grid-cols-[110px_2fr_130px_110px_90px_40px] px-6 py-3 border-b border-[#141414] bg-[#F0EFED] text-[10px] font-mono uppercase tracking-wider sticky top-0 z-10">
+                  <span>Type</span>
+                  <span>Node / Topic</span>
+                  <span>Category</span>
+                  <span>Status</span>
+                  <span>Intent</span>
+                  <span></span>
+                </div>
 
-                      <div className="border border-[#141414] p-6 space-y-4 bg-white">
-                        <div className="w-10 h-10 bg-[#141414] text-white flex items-center justify-center font-bold text-lg">03</div>
-                        <h3 className="font-bold uppercase tracking-wider text-xs">Competitor 2x2 Matrix</h3>
-                        <p className="text-xs opacity-70 italic leading-relaxed">
-                          Compares competitor URLs side-by-side to highlight Competitor Threats (steal targets), Blue Ocean white-space, and your defensive moat.
-                        </p>
+                {/* List Rows */}
+                <div className="flex-1 overflow-y-auto">
+                  {filteredListItems.length === 0 ? (
+                    <div className="p-12 text-center text-sm font-mono opacity-50">
+                      No topic nodes match the current filter selection.
+                    </div>
+                  ) : (
+                    filteredListItems.map((item) => (
+                      <div 
+                        key={item.nodeId}
+                        onClick={() => setSelectedNodeId(item.nodeId)}
+                        id={`node-${item.nodeId}`}
+                        className={`grid grid-cols-[110px_2fr_130px_110px_90px_40px] px-6 py-4 border-b border-[#141414]/10 cursor-pointer items-center transition-colors ${
+                          selectedNodeId === item.nodeId
+                            ? 'bg-[#141414] text-[#E4E3E0]'
+                            : 'hover:bg-[#141414]/5 bg-white'
+                        }`}
+                      >
+                        <span className="text-[10px] font-mono uppercase opacity-80 flex items-center">
+                          <Circle className={`w-2 h-2 mr-2 fill-current ${
+                            item.nodeType === 'pillar' ? 'text-blue-500' : item.nodeType === 'cluster' ? 'text-amber-500' : 'text-emerald-500'
+                          }`} />
+                          {item.nodeType}
+                        </span>
+
+                        <span className="font-bold text-xs flex items-center gap-2 pr-2">
+                          <span className="truncate">{item.nodeLabel}</span>
+                          {item.nodeType === 'pillar' && <Database className="w-3 h-3 opacity-30 shrink-0" />}
+                        </span>
+
+                        <span className="text-[11px] font-mono opacity-70 truncate">
+                          {item.category}
+                        </span>
+
+                        <div>
+                          {item.userCovered ? (
+                            <span className="text-[9px] font-mono uppercase text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 border border-emerald-200">
+                              ✓ Covered
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-mono uppercase text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 border border-amber-200">
+                              ⚠ Gap ({item.priority})
+                            </span>
+                          )}
+                        </div>
+
+                        <span className="text-xs opacity-70 italic">{item.intent}</span>
+
+                        <span className="flex items-center justify-end">
+                          <ChevronRight className={`w-4 h-4 transition-transform ${selectedNodeId === item.nodeId ? 'translate-x-1' : ''}`} />
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* VIEW 2: Visual Graph with Live Gap & Category Filters */}
+            {viewMode === 'graph' && (
+              <div className="flex-1 border-r border-[#141414] flex flex-col overflow-hidden bg-white">
+                {/* Category Filter on Graph */}
+                <CategoryFilterBar
+                  filters={filters}
+                  onChange={setFilters}
+                  categories={gapAnalysis.categories}
+                  totalCount={mapData.nodes.length}
+                  filteredCount={filteredListItems.length}
+                  showGapFilter={true}
+                />
+
+                <div className="flex-1 relative overflow-hidden">
+                  <TopicalGraph 
+                    data={mapData} 
+                    onSelectNode={setSelectedNodeId} 
+                    selectedNodeId={selectedNodeId}
+                    filters={filters}
+                    gapItems={gapAnalysis.items}
+                    showGapOverlayDefault={true}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* VIEW 3: Content Gap & Competitor Audit Module */}
+            {viewMode === 'gaps' && (
+              <div className="flex-1 border-r border-[#141414] flex flex-col overflow-hidden">
+                <GapAnalysisModule
+                  mapData={mapData}
+                  gapItems={gapAnalysis.items}
+                  summary={gapAnalysis.summary}
+                  categories={gapAnalysis.categories}
+                  userUrlsText={userUrlsText}
+                  competitorUrlsText={competitorUrlsText}
+                  onUpdateUserUrls={setUserUrlsText}
+                  onUpdateCompetitorUrls={setCompetitorUrlsText}
+                  onLoadSampleUrls={handleLoadSampleUrls}
+                  onSelectNode={setSelectedNodeId}
+                  selectedNodeId={selectedNodeId}
+                  onToggleCovered={handleToggleCovered}
+                  onGenerateBrief={handleOpenBriefModal}
+                />
+              </div>
+            )}
+
+            {/* VIEW 4: JSON Mode */}
+            {viewMode === 'json' && (
+              <div className="flex-1 bg-[#1a1a1a] text-[#a9b7c6] p-8 font-mono text-xs overflow-auto selection:bg-[#2b2b2b]">
+                <pre className="whitespace-pre-wrap">
+                  {JSON.stringify({ topicalMap: mapData, gapAnalysis }, null, 2)}
+                </pre>
+              </div>
+            )}
+
+            {/* Sidebar: Entity Details, Authority Flow (D3 Mini-Graph), and Gap Status */}
+            <aside className={`w-[420px] bg-[#F0EFED] border-l border-[#141414] flex flex-col transition-all z-20 shrink-0 ${
+              selectedNode ? 'translate-x-0' : 'hidden'
+            }`}>
+              {selectedNode && (
+                <>
+                  <div className="p-5 border-b border-[#141414] flex justify-between items-center bg-[#E4E3E0]">
+                    <h3 className="text-xs font-mono uppercase tracking-widest opacity-60">Entity Blueprint</h3>
+                    <button 
+                      onClick={() => setSelectedNodeId(null)} 
+                      className="p-1 hover:bg-[#141414]/10 transition-colors border border-transparent hover:border-[#141414]/20"
+                      title="Close Inspector"
+                    >
+                      <ChevronRight className="w-4 h-4 rotate-180" />
+                    </button>
+                  </div>
+
+                  <div className="p-6 space-y-6 overflow-y-auto flex-1">
+                    {/* Node Title & Tags */}
+                    <div>
+                      <h4 className="text-3xl font-serif italic mb-2 leading-tight">{selectedNode.label}</h4>
+                      <div className="flex flex-wrap gap-2">
+                        <span className="text-[10px] font-mono uppercase border border-[#141414] px-2 py-0.5 rounded-full bg-white">
+                          {selectedNode.type}
+                        </span>
+                        <span className="text-[10px] font-mono uppercase border border-[#141414] px-2 py-0.5 rounded-full bg-white">
+                          {selectedNode.intent}
+                        </span>
+                        {selectedNodeGap && (
+                          <span className="text-[10px] font-mono uppercase border border-[#141414]/40 px-2 py-0.5 rounded-full bg-neutral-100">
+                            {selectedNodeGap.category}
+                          </span>
+                        )}
                       </div>
                     </div>
 
-                    <section className="bg-[#141414] text-[#E4E3E0] p-10 relative overflow-hidden">
-                      <div className="relative z-10">
-                        <p className="font-serif italic text-2xl leading-snug mb-3">
-                          "Search Engines do not rank pages. They rank knowledge representations."
-                        </p>
-                        <p className="text-[10px] font-mono uppercase opacity-50 tracking-widest">— Semantic SEO Philosophy</p>
-                      </div>
-                      <Network className="absolute -right-10 -bottom-10 w-48 h-48 opacity-10" />
-                    </section>
-                  </div>
-                </motion.div>
-              )}
+                    {/* Content Gap & Competitor Status Card */}
+                    {selectedNodeGap && (
+                      <div className={`p-4 border border-[#141414] ${
+                        selectedNodeGap.userCovered 
+                          ? 'bg-emerald-50/50' 
+                          : selectedNodeGap.matrixStatus === 'competitor_advantage'
+                          ? 'bg-rose-50/50'
+                          : 'bg-amber-50/50'
+                      }`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-mono uppercase tracking-wider font-bold">
+                            Content Coverage Status
+                          </span>
+                          <button
+                            onClick={() => handleToggleCovered(selectedNode.id)}
+                            className="text-[10px] font-mono uppercase underline hover:opacity-75"
+                          >
+                            {selectedNodeGap.userCovered ? 'Mark as Gap' : '✓ Mark as Covered'}
+                          </button>
+                        </div>
 
-              {/* Sidebar: Entity Details, Authority Flow, and Gap Status */}
-              <aside className={`w-[420px] bg-[#F0EFED] border-l border-[#141414] flex flex-col transition-all z-20 shrink-0 ${
-                selectedNode ? 'translate-x-0' : 'hidden'
-              }`}>
-                {selectedNode && (
-                  <>
-                    <div className="p-5 border-b border-[#141414] flex justify-between items-center bg-[#E4E3E0]">
-                      <h3 className="text-xs font-mono uppercase tracking-widest opacity-60">Entity Blueprint</h3>
-                      <button 
-                        onClick={() => setSelectedNodeId(null)} 
-                        className="p-1 hover:bg-[#141414]/10 transition-colors border border-transparent hover:border-[#141414]/20"
-                        title="Close Inspector"
+                        <div className="flex items-center gap-2 mb-2">
+                          {selectedNodeGap.userCovered ? (
+                            <span className="flex items-center gap-1 text-xs font-bold text-emerald-800">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Published ({selectedNodeGap.userMatchScore}% match)
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-xs font-bold text-amber-900">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                              Content Gap [{selectedNodeGap.priority} Priority]
+                            </span>
+                          )}
+                        </div>
+
+                        {selectedNodeGap.userMatchedUrl && (
+                          <div className="text-[11px] font-mono text-emerald-900 truncate mb-1 flex items-center gap-1">
+                            <ExternalLink className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{selectedNodeGap.userMatchedUrl}</span>
+                          </div>
+                        )}
+
+                        <div className="text-[11px] text-[#141414]/80 mt-2 pt-2 border-t border-[#141414]/10">
+                          <strong>Action:</strong> {selectedNodeGap.recommendedAction}
+                        </div>
+
+                        <div className="text-[10px] font-mono text-[#141414]/60 mt-1">
+                          Target Slug: <code>{selectedNodeGap.targetSlug}</code>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Secondary AI Analysis: Content Brief & LSI Keywords */}
+                    <div className="p-4 bg-gradient-to-br from-blue-50/70 to-indigo-50/40 border border-[#141414] space-y-2.5 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono uppercase font-bold text-blue-900 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                          AI Content Brief & LSI
+                        </span>
+                        <span className="text-[9px] font-mono uppercase bg-blue-100 text-blue-800 border border-blue-200 px-1.5 py-0.2 rounded font-semibold">
+                          Custom Choices
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#141414]/75 font-mono leading-relaxed">
+                        Generate categorized LSI keywords, search intent breakdown, PAA questions, and heading architecture tailored to your audience & format.
+                      </p>
+                      <button
+                        onClick={() => handleOpenBriefModal(selectedNodeGap || selectedNode)}
+                        className="w-full bg-[#141414] text-[#E4E3E0] hover:bg-blue-600 hover:text-white p-2 text-xs font-mono uppercase font-bold flex items-center justify-center gap-2 transition-colors"
                       >
-                        <ChevronRight className="w-4 h-4 rotate-180" />
+                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Generate AI Content Brief</span>
                       </button>
                     </div>
 
-                    <div className="p-6 space-y-6 overflow-y-auto flex-1">
-                      {/* Node Title & Tags */}
-                      <div>
-                        <h4 className="text-3xl font-serif italic mb-2 leading-tight">{selectedNode.label}</h4>
-                        <div className="flex flex-wrap gap-2">
-                          <span className="text-[10px] font-mono uppercase border border-[#141414] px-2 py-0.5 rounded-full bg-white">
-                            {selectedNode.type}
+                    {/* Architecture Description */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 text-[10px] font-mono opacity-50 uppercase tracking-wider">
+                        <Info className="w-3 h-3" /> Architecture Overview
+                      </div>
+                      <p className="text-xs leading-relaxed text-[#141414]/80">{selectedNode.description}</p>
+                    </div>
+
+                    {/* Authority Flow D3 Force-Directed Graph Visualizer */}
+                    <AuthorityFlowView
+                      mapData={mapData}
+                      node={selectedNode}
+                      onSelectNode={setSelectedNodeId}
+                    />
+
+                    {/* Semantic Entity Connections */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-[10px] font-mono opacity-50 uppercase tracking-wider">
+                        <Layers className="w-3 h-3" /> Semantic Entities ({selectedNode.entities.length})
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedNode.entities.map((ent, i) => (
+                          <span key={i} className="text-[10px] font-mono border border-[#141414]/20 bg-white px-2 py-1 flex items-center gap-1">
+                            <Circle className="w-1.5 h-1.5 fill-[#141414]" />
+                            {ent}
                           </span>
-                          <span className="text-[10px] font-mono uppercase border border-[#141414] px-2 py-0.5 rounded-full bg-white">
-                            {selectedNode.intent}
-                          </span>
-                          {selectedNodeGap && (
-                            <span className="text-[10px] font-mono uppercase border border-[#141414]/40 px-2 py-0.5 rounded-full bg-neutral-100">
-                              {selectedNodeGap.category}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Content Gap & Competitor Status Card */}
-                      {selectedNodeGap && (
-                        <div className={`p-4 border border-[#141414] ${
-                          selectedNodeGap.userCovered 
-                            ? 'bg-emerald-50/50' 
-                            : selectedNodeGap.matrixStatus === 'competitor_advantage'
-                            ? 'bg-rose-50/50'
-                            : 'bg-amber-50/50'
-                        }`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-mono uppercase tracking-wider font-bold">
-                              Content Coverage Status
-                            </span>
-                            <button
-                              onClick={() => handleToggleCovered(selectedNode.id)}
-                              className="text-[10px] font-mono uppercase underline hover:opacity-75"
-                            >
-                              {selectedNodeGap.userCovered ? 'Mark as Gap' : '✓ Mark as Covered'}
-                            </button>
-                          </div>
-
-                          <div className="flex items-center gap-2 mb-2">
-                            {selectedNodeGap.userCovered ? (
-                              <span className="flex items-center gap-1 text-xs font-bold text-emerald-800">
-                                <CheckCircle2 className="w-3.5 h-3.5" /> Published ({selectedNodeGap.userMatchScore}% match)
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1 text-xs font-bold text-amber-900">
-                                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                                Content Gap [{selectedNodeGap.priority} Priority]
-                              </span>
-                            )}
-                          </div>
-
-                          {selectedNodeGap.userMatchedUrl && (
-                            <div className="text-[11px] font-mono text-emerald-900 truncate mb-1 flex items-center gap-1">
-                              <ExternalLink className="w-3 h-3 shrink-0" />
-                              <span className="truncate">{selectedNodeGap.userMatchedUrl}</span>
-                            </div>
-                          )}
-
-                          <div className="text-[11px] text-[#141414]/80 mt-2 pt-2 border-t border-[#141414]/10">
-                            <strong>Action:</strong> {selectedNodeGap.recommendedAction}
-                          </div>
-
-                          <div className="text-[10px] font-mono text-[#141414]/60 mt-1">
-                            Target Slug: <code>{selectedNodeGap.targetSlug}</code>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Architecture Description */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 text-[10px] font-mono opacity-50 uppercase tracking-wider">
-                          <Info className="w-3 h-3" /> Architecture Overview
-                        </div>
-                        <p className="text-xs leading-relaxed text-[#141414]/80">{selectedNode.description}</p>
-                      </div>
-
-                      {/* Authority Flow Visualizer Component */}
-                      <AuthorityFlowView
-                        mapData={mapData}
-                        node={selectedNode}
-                        onSelectNode={setSelectedNodeId}
-                      />
-
-                      {/* Semantic Entity Connections */}
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-[10px] font-mono opacity-50 uppercase tracking-wider">
-                          <Layers className="w-3 h-3" /> Semantic Entities ({selectedNode.entities.length})
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedNode.entities.map((ent, i) => (
-                            <span key={i} className="text-[10px] font-mono border border-[#141414]/20 bg-white px-2 py-1 flex items-center gap-1">
-                              <Circle className="w-1.5 h-1.5 fill-[#141414]" />
-                              {ent}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Internal Linking Strategy */}
-                      <div className="space-y-3 bg-white border border-[#141414] p-4">
-                        <div className="flex items-center gap-2 text-[10px] font-mono opacity-50 uppercase tracking-wider">
-                          <LinkIcon className="w-3 h-3" /> Internal Linking Directives
-                        </div>
-                        <p className="text-xs leading-relaxed font-serif italic text-blue-900">
-                          {selectedNode.linkingLogic}
-                        </p>
+                        ))}
                       </div>
                     </div>
-                  </>
-                )}
-              </aside>
-            </div>
-          )}
-        </AnimatePresence>
+
+                    {/* Internal Linking Strategy */}
+                    <div className="space-y-3 bg-white border border-[#141414] p-4">
+                      <div className="flex items-center gap-2 text-[10px] font-mono opacity-50 uppercase tracking-wider">
+                        <LinkIcon className="w-3 h-3" /> Internal Linking Directives
+                      </div>
+                      <p className="text-xs leading-relaxed font-serif italic text-blue-900">
+                        {selectedNode.linkingLogic}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
+            </aside>
+          </div>
+        )}
       </main>
 
       {/* Footer / Status Bar */}
@@ -832,6 +951,15 @@ ${mapData.nodes.map(n => {
           </div>
         )}
       </footer>
+
+      {/* AI Content Brief & LSI Generator Modal */}
+      <ContentBriefModal
+        isOpen={isBriefModalOpen}
+        onClose={() => setIsBriefModalOpen(false)}
+        node={briefModalNode}
+        seedTopic={mapData?.seed || seed || 'Topical Architecture'}
+        competitorUrl={competitorUrlsText ? competitorUrlsText.split('\n')[0]?.trim() : undefined}
+      />
     </div>
   );
 }

@@ -6,9 +6,10 @@ interface Props {
   items: NodeGapItem[];
   onSelectNode: (nodeId: string) => void;
   selectedNodeId: string | null;
+  onGenerateBrief?: (item: NodeGapItem) => void;
 }
 
-export default function CompetitorMatrixView({ items, onSelectNode, selectedNodeId }: Props) {
+export default function CompetitorMatrixView({ items, onSelectNode, selectedNodeId, onGenerateBrief }: Props) {
   const competitorAdvantage = items.filter(i => i.matrixStatus === 'competitor_advantage');
   const blueOcean = items.filter(i => i.matrixStatus === 'blue_ocean');
   const battleground = items.filter(i => i.matrixStatus === 'battleground');
@@ -81,12 +82,28 @@ export default function CompetitorMatrixView({ items, onSelectNode, selectedNode
                     </span>
                   </div>
                   <p className="text-[11px] opacity-80 line-clamp-1 mb-1">{item.recommendedAction}</p>
-                  {item.competitorMatchedUrl && (
-                    <div className="text-[10px] font-mono text-rose-700 truncate flex items-center gap-1">
-                      <ExternalLink className="w-2.5 h-2.5" />
-                      Competitor URL: {item.competitorMatchedUrl}
+                  <div className="flex items-center justify-between pt-1 mt-1 border-t border-rose-100">
+                    <div className="text-[10px] font-mono text-rose-700 truncate flex items-center gap-1 max-w-[200px]">
+                      {item.competitorMatchedUrl && (
+                        <>
+                          <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                          <span className="truncate">{item.competitorMatchedUrl.replace(/^https?:\/\//, '')}</span>
+                        </>
+                      )}
                     </div>
-                  )}
+                    {onGenerateBrief && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onGenerateBrief(item);
+                        }}
+                        className="bg-[#141414] text-[#E4E3E0] hover:bg-rose-700 hover:text-white px-2 py-0.5 text-[9px] font-mono uppercase font-bold flex items-center gap-1 transition-colors shrink-0"
+                      >
+                        <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                        <span>AI Brief</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))
             )}
@@ -135,8 +152,22 @@ export default function CompetitorMatrixView({ items, onSelectNode, selectedNode
                     </span>
                   </div>
                   <p className="text-[11px] opacity-80 line-clamp-1 mb-1">{item.recommendedAction}</p>
-                  <div className="text-[10px] font-mono text-blue-700 truncate">
-                    Suggested Target: {item.targetSlug}
+                  <div className="flex items-center justify-between pt-1 mt-1 border-t border-blue-100">
+                    <span className="text-[10px] font-mono text-blue-700 truncate">
+                      {item.targetSlug}
+                    </span>
+                    {onGenerateBrief && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onGenerateBrief(item);
+                        }}
+                        className="bg-[#141414] text-[#E4E3E0] hover:bg-blue-700 hover:text-white px-2 py-0.5 text-[9px] font-mono uppercase font-bold flex items-center gap-1 transition-colors shrink-0"
+                      >
+                        <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                        <span>AI Brief</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               ))

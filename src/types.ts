@@ -75,3 +75,76 @@ export interface FilterOptions {
   gapStatus: 'all' | 'gaps_only' | 'covered_only' | 'competitor_gap' | 'blue_ocean';
 }
 
+export interface MonthlyTrendPoint {
+  month: string; // e.g. "Oct", "Nov", "Dec"
+  yearMonth: string; // e.g. "2025-10"
+  volume: number;
+}
+
+export interface ClusterDemandTrend {
+  category: string;
+  color: string;
+  gapCount: number;
+  averageMonthlyVolume: number;
+  annualTotalVolume: number;
+  growthPercentage: number; // e.g. +24%
+  peakMonth: string;
+  topGapTopics: string[];
+  monthlyData: MonthlyTrendPoint[];
+}
+
+export interface BriefOptions {
+  audience: 'beginner' | 'practitioner' | 'executive' | 'technical';
+  format: 'guide' | 'comparison' | 'troubleshooting' | 'playbook' | 'checklist';
+  tone: 'authoritative' | 'conversational' | 'commercial' | 'analytical';
+  wordCount: 'short' | 'standard' | 'pillar';
+  serpTarget: 'ai_overview' | 'featured_snippet' | 'paa_dominance' | 'topical_depth';
+  includeCompetitorAngle: boolean;
+}
+
+export interface BriefSection {
+  heading: string;
+  level: 'h2' | 'h3';
+  objective: string;
+  targetEntities: string[];
+  suggestedVisualOrCallout?: string;
+}
+
+export interface SEOContentBrief {
+  id: string;
+  generatedAt: number;
+  nodeId: string;
+  topicTitle: string;
+  category: string;
+  targetSlug: string;
+  titleTag: string;
+  metaDescription: string;
+  wordCountEstimate: string;
+  options: BriefOptions;
+  intentAnalysis: {
+    primaryIntent: SearchIntent;
+    buyerJourneyStage: 'Awareness' | 'Consideration' | 'Decision';
+    coreProblemToSolve: string;
+    specificUserQuestions: string[];
+  };
+  lsiKeywords: {
+    synonymsAndVariants: string[];
+    longTailQuestions: string[];
+    semanticEntities: string[];
+    commercialModifiers: string[];
+  };
+  outline: BriefSection[];
+  internalLinking: {
+    inboundAnchor: string;
+    targetParent: string;
+    outboundRecommendations: { label: string; anchorText: string }[];
+  };
+  technicalSeo: {
+    schemaType: string;
+    faqQuestions: { question: string; answerSummary: string }[];
+  };
+  competitorWeaknessAndEdge: {
+    competitorFlaw: string;
+    ourWinningAngle: string;
+  };
+}
